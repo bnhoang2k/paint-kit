@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit flash 5 Hz (planted fault)</title>
+<!-- PLANTED FAULT (flash-5hz: a full-viewport light/dark swap at 5 Hz). A copy of test/pages/flash-2hz.html with one
+     change, HZ 2 -> 5: 10 transitions, 5 flashes, in any 1 s, over WCAG 2.3.1's limit of 3. Only the flash check should
+     fail it. A minimal `window.__paint` hook draws the frame for `setTime(t)` (and for `?t=`). -->
+<style>
+  :root { --light: oklch(0.97 0 0); --dark: oklch(0.2 0 0); }
+  html, body { margin: 0; height: 100%; }
+</style>
+</head>
+<body>
+<script>
+  const HZ = 5; // flashes per second: one light and one dark half per cycle
+  const draw = (t) => {
+    const light = Math.floor(t * HZ * 2 + 1e-9) % 2 === 0;
+    document.body.style.background = light ? "var(--light)" : "var(--dark)";
+  };
+  draw(Number(new URLSearchParams(location.search).get("t") ?? 0));
+  window.__paint = { ready: true, setTime: draw, stats: () => ({ frames: 0 }) };
+</script>
+</body>
+</html>

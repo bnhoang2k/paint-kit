@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit ink cases</title>
+<!-- Edge cases for the text (ink) field, read by test/pages/paper.test.ts ("text field cases"); change both
+     together. The field runs with a custom selector, `.inked`, so:
+     - #styled has an author inline colour, a styled <a> child and an <em> child whose colour is `!important`: all
+       of it must turn transparent while WebGL runs, and the inline colour must come back exactly after it.
+     - #cap is capitalized in a narrow column that breaks inside words: only word starts are capitals.
+     - #upper is uppercased and holds "ß", which uppercases to two letters ("SS").
+     - #other carries `data-paint-ink` but does not match `.inked`, so this field must leave it alone. -->
+<style>
+  :root {
+    --ground: oklch(0.94 0.015 85);
+    --ink: oklch(0.24 0.03 260);
+    --accent: oklch(0.55 0.14 30);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.26 0.015 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent: oklch(0.78 0.11 60);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  main { position: relative; padding: 32px; font: 400 22px/1.4 Georgia, "Times New Roman", serif; }
+  p { margin: 0 0 18px; }
+  a { color: var(--accent); }
+  .inked em { color: var(--accent) !important; }
+  .cap { width: 4.6em; word-break: break-all; text-transform: capitalize; }
+  .upper { text-transform: uppercase; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<main>
+  <p class="inked" id="styled" style="color: var(--accent)">Read the <a href="#notes">margin note</a> and the <em>small print</em>.</p>
+  <p class="inked cap" id="cap">night shift notes run long</p>
+  <p class="inked upper" id="upper">die straße und maße</p>
+  <p data-paint-ink id="other">Not this field's text.</p>
+</main>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.2 }), fields.text({ selector: ".inked" })],
+    materials: [materials.paper()],
+    lights: [lights.key({ dir: [-0.7, 0.6, 0.6], level: 0.85 }), lights.ambient(0.4)],
+  });
+</script>
+</body>
+</html>

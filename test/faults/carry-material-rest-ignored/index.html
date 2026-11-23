@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit carry</title>
+<!-- PLANTED FAULT (carry-material-rest-ignored: engine faults 'rest-ignored-<material>'). A copy of
+     test/pages/carry.html with exactly one change: the engine fault named by `?mat=` (rest-ignored-paper, -matte,
+     -denim or -sheen) makes that one material sample its texture at the screen position instead of the rest
+     position, while the carried fields and the text still move with the surface: the dye, tone, fibres or
+     brushing stay pinned to the screen under a moving weave or sheet. test/pages/carry.test.ts, "a material that
+     ignores the rest position fails", must see the material-only texture (`?relief=0`) not move. -->
+<!-- The carry test page: a surface moved by a known offset must carry its fine texture with it. A `mover` shape
+     field writes only the rest position (writes ["rest"]): every point of the surface sat (dx, dy) px up and left
+     of where it shows, so the whole surface reads as moved right by dx and down by dy. It is listed after the
+     surface field on purpose: the engine draws every rest pass first, so the carried fields (fields.sheet,
+     fields.twill, fields.text) and the materials read the rest position whatever the list order.
+     `?mat=` picks the surface: paper (fields.sheet + materials.paper, the default), matte (fields.sheet +
+     materials.matte), denim (fields.twill + materials.denim) or sheen (fields.twill + materials.sheen). The key
+     light is a direction, so a moved surface takes the same light at its new place. Grain is 0: the finish's grain
+     is pinned to the screen by design, and would pull the correlation toward no shift.
+     `?relief=0` drops the surface's relief, so only the material's own texture is measured (see the script).
+     `window.setMove(dx, dy)` moves it (CSS px, through uniforms only) and asks for one redraw.
+     test/pages/carry.test.ts reads the heading's box; its planted fault is test/faults/carry-rest-ignored. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.26 0.05 260);
+    --accent: oklch(0.6 0.1 240);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.3 0.02 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent: oklch(0.7 0.1 240);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  h1 { position: absolute; left: 120px; top: 120px; margin: 0; font: 700 64px/1.1 Georgia, "Times New Roman", serif; }
+</style>
+<script>globalThis.__PAINT_TEST_FAULT = "rest-ignored-" + new URLSearchParams(location.search).get("mat");</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<h1 id="heading" data-paint-ink>Carried with the sheet</h1>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const q = new URLSearchParams(location.search);
+  const mat = q.get("mat") ?? "paper";
+  const U = { uMove: [0, 0] };
+  let invalidate = () => {};
+  // The mover: no height, coverage or ink of its own; only where each point sat on the flat sheet.
+  // `?gated=1`: the mover also writes coverage (1 everywhere), so its rest is written only where coverage is above
+  // 0.5, as a strip field's would be; the picture is the same.
+  const base = fields.shape({
+    writes: q.get("gated") === "1" ? ["coverage", "rest"] : ["rest"],
+    uniforms: U,
+    glsl: /* glsl */ `
+uniform vec2 uMove;
+uniform float uDpr;
+vec4 field(vec2 uv, vec2 q) { return vec4(0.0, 1.0, 0.0, -1.0); }
+// uMove is CSS px, right and down; uv runs y up. Sheet px per CSS px is uRes over the canvas's CSS size, 1 at dpr 1.
+vec2 fieldRest(vec2 uv, vec2 q) { return uv - vec2(uMove.x, -uMove.y) * uDpr / uRes; }
+`,
+  });
+  const mover = {
+    ...base,
+    init(gl, ctx) {
+      invalidate = () => ctx.invalidate();
+      U.uDpr = ctx.size.dpr;
+      return base.init(gl, ctx);
+    },
+  };
+  U.uDpr = 1;
+  window.setMove = (dx, dy) => {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) throw new RangeError(`carry: setMove takes two finite CSS px offsets, got ${dx}, ${dy}`);
+    U.uMove = [dx, dy];
+    invalidate();
+  };
+  const cloth = mat === "denim" || mat === "sheen";
+  // `?relief=0`: the material alone. No field writes height, so the only texture in the frame is the material's own
+  // (a carried field's relief would hold the correlation peak at the move even if the material ignored the rest
+  // position). Denim and sheen read the warp axis from the direction image, so a flat, uncarried shape writes the
+  // twill's axis (63 degrees) there and nothing else.
+  const flatAxis = fields.shape({
+    writes: ["direction"],
+    glsl: /* glsl */ `
+vec4 field(vec2 uv, vec2 q) { return vec4(0.0, 1.0, 0.0, -1.0); }
+vec2 fieldDir(vec2 uv, vec2 q) { return vec2(cos(radians(63.0)), sin(radians(63.0))); }
+`,
+  });
+  const relief = q.get("relief") !== "0";
+  const surface = !relief ? (cloth ? [flatAxis] : []) : [cloth ? fields.twill({ wales: 48, angle: 63, scale: 0.6 }) : fields.sheet({ warp: 0.45 })];
+  const MATERIALS = { paper: () => materials.paper(), matte: () => materials.matte(), denim: () => materials.denim(), sheen: () => materials.sheen({ roughness: 0.3, anisotropy: 0.6 }) };
+  if (!Object.hasOwn(MATERIALS, mat)) throw new Error(`carry: ?mat= is one of ${Object.keys(MATERIALS).join(", ")}, got "${mat}"`);
+  const material = MATERIALS[mat]();
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    detail: 1,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [...surface, mover, fields.text()],
+    materials: [material],
+    lights: [lights.key({ dir: [-0.6, 0.5, 0.6], level: 0.85 }), lights.ambient(0.15)],
+    finish: { grain: 0 },
+  });
+</script>
+</body>
+</html>

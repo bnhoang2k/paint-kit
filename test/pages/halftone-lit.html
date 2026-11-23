@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit halftone lit</title>
+<!-- Halftone after light (Phase 2 Task 8): a warped paper sheet under a grazing key, with the finish's halftone
+     screen on (`finish.halftone`). The screen prints each cell as one dot of the lit colour on the ink token (ramp
+     position 1), sized so the cell brightens with the light: in light, light paper dots on dark ink grow where the key
+     lands and fall back toward bare ink where it misses; in dark, where the ink is the light token, it prints a
+     negative, dark paper dots on light ink that shrink where the key lands. Lights: a key from the upper left (light 0) and ambient (light 1).
+     The paper and light are bar 03's (bars/03-halftone-resolve/index.html: sheet warp 0.45, key dir
+     [-0.7, 0.6, 0.4] level 0.85, ambient 0.15, detail 0.6), the nearest kept bar on the same surface, copied, not
+     tuned. The screen's cell (8 CSS px) and angle (45 degrees, the classic single-ink screen, as halftone.html) are
+     the builder's choice: a cell large enough that a cell's dot can be read from 64 px at dpr 1.
+     `window.setScreen(on)` turns the screen off and on (`painter.set({ finish: { halftone } })`), and
+     `window.__screen` holds its options. test/pages/halftone.test.ts reads both. -->
+<style>
+  :root {
+    --ground: oklch(0.94 0.02 85);
+    --ink: oklch(0.25 0.04 255);
+    --accent: oklch(0.62 0.13 40);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.25 0.02 255);
+      --ink: oklch(0.92 0.025 85);
+      --accent: oklch(0.7 0.12 40);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const seed = Number(new URLSearchParams(location.search).get("seed") ?? 1);
+  const SCREEN = { cell: 8, angle: 45, ground: 1 };
+
+  window.painter = paint(document.querySelector("canvas"), {
+    seed,
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.45 })],
+    materials: [materials.paper()],
+    lights: [lights.key({ dir: [-0.7, 0.6, 0.4], level: 0.85 }), lights.ambient(0.15)],
+    finish: { halftone: SCREEN },
+  });
+  window.__screen = { ...SCREEN };
+  window.setScreen = (on) => window.painter.set({ finish: { halftone: on ? SCREEN : null } });
+</script>
+</body>
+</html>

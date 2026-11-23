@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit fault paper-hotspot</title>
+<!-- PLANTED FAULT (paper-hotspot: the lamp's hot spot sits behind the "always" heading). A copy of
+     test/pages/paper.html with exactly one change: light 0 hangs low, straight over the heading
+     at nearly 9x level. The paper under it clips to white and the ink's gloss mirrors the lamp, so the heading washes out.
+     Only text-contrast must newly fail. -->
+<style>
+  :root {
+    --ground: oklch(0.94 0.015 85);
+    --ink: oklch(0.24 0.03 260);
+    --accent: oklch(0.68 0.12 60);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.26 0.015 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent: oklch(0.74 0.11 60);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  main { position: relative; max-width: 34rem; padding: 40px 32px; }
+  h1 { margin: 0 0 20px; font: 600 40px/1.15 Georgia, "Times New Roman", serif; letter-spacing: -0.01em; }
+  p { margin: 0; font: 400 19px/1.55 Georgia, "Times New Roman", serif; letter-spacing: 0.01em; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<main>
+  <h1 data-paint-ink data-paint-text="always">Night shift notes</h1>
+  <p data-paint-ink data-paint-text="lit">The lamp on the rail decides what you can read. Words inside its pool sit
+    sharp and black in the paper's fibres; words outside it sink back into the dark sheet until the light
+    slides over them again. Move the lamp and the page reads differently.</p>
+</main>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.35 }), fields.text()],
+    materials: [materials.paper()],
+    lights: [
+      lights.lamp({ at: [0.2, 0.08, 0.45], aim: [0.2, 0.08, 0], cone: 30, soft: 10, level: 10, kelvin: 2900 }),
+      lights.ambient(0.3),
+    ],
+  });
+</script>
+</body>
+</html>

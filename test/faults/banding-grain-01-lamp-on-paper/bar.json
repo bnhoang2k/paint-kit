@@ -1,0 +1,40 @@
+{
+  "id": "banding-grain-01-lamp-on-paper",
+  "reference": {
+    "shelfKey": "planted-fault",
+    "title": "banding-grain-01-lamp-on-paper planted fault"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": [
+      "--accent"
+    ]
+  },
+  "detail": 0.6,
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "laws": [
+    "relief",
+    "falloff"
+  ],
+  "alive": {
+    "t0": 1,
+    "t1": 3
+  },
+  "text": {
+    "always": [
+      "#hold-hint",
+      "#mode-label"
+    ],
+    "lit": [
+      "#typed"
+    ]
+  },
+  "beats": [
+    "planted fault"
+  ]
+}

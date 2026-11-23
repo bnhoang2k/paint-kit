@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit flash, pointer 5 Hz (planted fault)</title>
+<!-- PLANTED FAULT (flash-pointer-5hz: a white glow that follows the engine's eased pointer). Nothing moves with time:
+     the page flashes only while the pointer swings. Its bar.json declares a pointer path that swings it between
+     x 0.25 and x 0.75 every 0.1 s (5 swings there and back per s), so the glow lights and leaves each end 5 times a
+     second: 5 flashes per s, over WCAG 2.3.1's limit of 3. With no path the pointer rests at the centre and the page
+     holds still, so the flash check passes it: the path is what catches it. The engine's pointer eases by 0.25 per
+     tick, bar 06's reference lag. -->
+<style>
+  :root { --ground: oklch(0.95 0 0); --ink: oklch(0.25 0 0); --accent: oklch(0.7 0.1 250); }
+  html, body { margin: 0; height: 100%; background: var(--ground); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0 })],
+    materials: [materials.matte()],
+    lights: [lights.glow({ at: [0.5, 0.5], radius: 0.2, level: 2, hues: "accents", tint: 0, follow: 1 }), lights.ambient(0.15)],
+    pointer: { ease: 0.25 },
+  });
+</script>
+</body>
+</html>

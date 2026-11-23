@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit burn</title>
+<!-- The burn test page: a sheet of paper that burns from the bottom edge (fields.burn), scorched behind the front
+     (materials.paper scorch) and lit by the front's ember light (light 1), under a key (light 0) and ambient. The
+     burn starts at 0 s; `?wait=1` makes it wait (startAt null) for `window.burnStart()`. `?from=point` starts it from a
+     point low in the middle (builder: [0.5, 0.7]), so the ember lights a disc with paper beyond it (the tint law's
+     circle reads nothing beyond a front across the whole card). `?ember=0` sets the ember's level to 0 (a relief
+     reading without it). `?start=<s>` sets the start time (default 0), so a check that freezes the page at its own
+     time can read a later front. `?card=1` cuts the sheet to a rounded portrait card smaller than the frame on the
+     page's ground, so the burn law meets ground at card edges the burn has not reached (Task 21 fix round 1, I1). Its
+     shape is bar 12's study card, 1.7 times as tall as wide (bars/12-burn-card/study.md, "Front speed"); its size is
+     builder: 0.53 x 0.9 short-side units, corner radius 0.04, tall enough for paper beyond the ember's reach ahead of
+     the front, and narrower than twice 1.2 x reach, so no paper on it lies that far from its side edges. `?torn=1` turns on
+     the torn front, the hot rim and the specks (bar 12's burn): tear 1, linger 0.2, specks inside the card's box. For the
+     tests' readings and planted faults: `&norim=1` drops the rim, `&nospecks=1` drops the specks, and `&widebox=1` lets specks
+     start outside the card.
+     Settings here are mirrored in
+     test/pages/burn.test.ts; change both together. Look values (speed, scorch, reach, kelvin, level) are builder
+     values for a test page, picked before any check ran: the front crosses the 600 px short side in about 7 s, a
+     scorch band of about a fifth of it, a glow a quarter of the short side deep, a dull red edge and an orange core. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.25 0.03 50);
+    --accent: oklch(0.66 0.15 45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.32 0.02 260);
+      --ink: oklch(0.93 0.02 85);
+      --accent: oklch(0.72 0.14 45);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const q = new URLSearchParams(location.search);
+  const torn = q.has("torn");
+  const burn = fields.burn({ from: q.get("from") === "point" ? [0.5, 0.7] : "bottom", speed: 0.15, rag: 0.6, scorch: 1.2, startAt: q.get("wait") ? null : Number(q.get("start") ?? 0), ...(torn ? { tear: 1, linger: 0.2 } : {}) });
+  const hot = torn
+    ? {
+        ...(q.has("norim") ? {} : { rim: { width: 0.01, gain: 5, kelvin: [1400, 2300] } }),
+        ...(q.has("nospecks") ? {} : { specks: { gain: 7, density: 0.45, box: q.has("widebox") ? [2, 2] : [0.265, 0.45], kelvin: [1300, 2100] } }),
+      }
+    : {};
+  window.burnStart = () => burn.start();
+  // A rounded card: coverage 1 inside, 0 on the ground, over one sheet px at its edge.
+  const card = fields.shape({
+    writes: ["coverage"],
+    glsl: /* glsl */ `
+vec4 field(vec2 uv, vec2 q) {
+  vec2 dq = abs(q) - (vec2(0.265, 0.45) - 0.04);
+  float sd = length(max(dq, 0.0)) + min(max(dq.x, dq.y), 0.0) - 0.04;
+  return vec4(0.0, clamp(0.5 - sd * min(uRes.x, uRes.y), 0.0, 1.0), 0.0, -1.0);
+}
+`,
+  });
+  paint(document.querySelector("canvas"), {
+    seed: Number(q.get("seed") ?? 1),
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.5 }), ...(q.get("card") ? [card] : []), burn],
+    materials: [materials.paper({ scorch: true })],
+    lights: [
+      lights.key({ dir: [-0.4, 0.5, 0.75], level: 0.9 }),
+      lights.ember({ field: burn, kelvin: [900, 1600], level: q.get("ember") === "0" ? 0 : 1.2, reach: 0.25, ...hot }),
+      lights.ambient(0.15),
+    ],
+  });
+</script>
+</body>
+</html>

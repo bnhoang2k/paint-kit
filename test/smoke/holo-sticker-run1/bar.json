@@ -1,0 +1,32 @@
+{
+  "id": "holo-sticker",
+  "reference": {
+    "shelfKey": "none",
+    "title": "A holo sticker on a notebook (copies bar 10-foil-card)"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": ["--sticker", "--accent-warm", "--accent-cool"]
+  },
+  "detail": 0.6,
+  "seeds": [1, 2, 3],
+  "laws": ["relief", "shadow", "iridescence"],
+  "alive": { "rests": "The sticker lies still on a still notebook page: nothing moves without the pointer, and foil colour never moves with the clock (bar 10's reason, copied)" },
+  "text": { "always": [".nb-title", ".nb-date", ".nb-line"], "lit": [] },
+  "flash": {
+    "pointer": [
+      { "t": 0, "x": 0.5, "y": 0.5 },
+      { "t": 0.5, "x": 1, "y": 0.5 },
+      { "t": 1.5, "x": 0, "y": 0.5 },
+      { "t": 2, "x": 0.5, "y": 0.5 }
+    ]
+  },
+  "beats": [
+    "A ruled notebook page lies under one key light: faint ruled lines, a margin line and punched holes down the left edge, with a few handwritten-style notes on the lines",
+    "A round die-cut sticker sits on the page, raised a little: its paper border has its own tone, and the key gives it a lit edge and a shadow that falls away from the light",
+    "The sticker's centre is holographic foil with concentric grooves about a seeded point, so under the key each part of the rings shows its own grating colour",
+    "Moving the pointer tilts the page and turns the key toward it, so the colour sweeps round the rings and the shadow follows the light",
+    "A printed star and ring cover the foil where they print; nothing moves without the pointer, and the tilt eases back to flat when the pointer leaves"
+  ]
+}

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit fault: mostly baked band</title>
+<!-- Palette fault (check-fix (b) round 3, the panel's cheat iii): core.html plus a wide band (30% of the frame) whose colour is 90% the accent read once (getPropertyValue in page code) and 10% the live accent. Palette must fail. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.03 250);
+    --ink: oklch(0.3 0.04 255);
+    --accent: oklch(0.62 0.13 45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.25 0.03 255);
+      --ink: oklch(0.92 0.02 250);
+      --accent: oklch(0.7 0.12 50);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  h1 { position: relative; margin: 0; padding: 48px 48px 12px; font: 600 40px/1.2 system-ui, sans-serif; }
+  p { position: relative; margin: 0; padding: 0 48px; font: 400 18px/1.4 system-ui, sans-serif; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<h1>A sheet under one light</h1>
+<p data-paint-ink>Ink text the light will fall on.</p>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage, parseCssColor } from "paint-kit";
+
+  // The fault: the accent's declared value, read once here; the band is 90% that and 10% the live accent.
+  const baked = parseCssColor(getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
+  const BAND_HALF = 0.15;
+  const band = fields.shape({
+    writes: ["slot"],
+    uniforms: { uBandHalf: BAND_HALF },
+    glsl: /* glsl */ `
+uniform float uBandHalf;
+vec4 field(vec2 uv, vec2 q) { return abs(uv.y - 0.5) < uBandHalf ? vec4(0.0, 1.0, 0.0, 1.0) : vec4(0.0, 1.0, 0.0, -1.0); }
+`,
+  });
+  const glaze = {
+    id: "glaze",
+    laws: ["relief"],
+    uniforms: { baked },
+    glsl: /* glsl */ `
+uniform vec3 u_$_baked;
+MatOut mat_$(Surf s) {
+  MatOut m = matBase(s);
+  m.albedo = mixOklab(uRamp[2], u_$_baked, 0.9);
+  return m;
+}
+`,
+  };
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.6 }), band],
+    materials: [materials.matte(), glaze],
+    lights: [lights.key({ dir: [-0.7, 0.6, 0.6], level: 0.85 }), lights.ambient(0.15)],
+  });
+</script>
+</body>
+</html>

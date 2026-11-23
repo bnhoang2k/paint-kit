@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pool light</title>
+<!-- Bar 05, pool light (from Pool's "importing screenshots"; study.md). One pool of water over the whole page
+     (fields.water, materials.water in slot 0, lights.throughWater). A screenshot card is the field's lifted layer:
+     a picture of its own under the water, seen at its own depth (the floor less its rise), so its outline bends only
+     as much as that depth bends it. It climbs the page: the layer's `shift` moves it, its `rise` lifts it off the
+     floor, both as functions of t read per draw through uniforms. Nothing is redrawn or re-uploaded per frame. The
+     water bends the card and the caustic lines with one refraction, so the card's outline wobbles with the lines and
+     its print travels and bends with it.
+     The pictures have no colour: red is a ramp position (0 the ground token, 0.5 the accent, 1 the ink token), so
+     the pool follows the tokens in either scheme; the card's picture holds its coverage in green. Every number in
+     CLIMB and CARD comes from study.md (Source: frames) or notes.md says why. `window.painter` is the painter;
+     `window.poolAt(t)` gives the card's place (centre y, short-side units, y up) and its height off the floor at
+     time t. -->
+<style>
+  :root {
+    --ground: oklch(0.975 0.01 240);
+    --ink: oklch(0.23 0.035 260);
+    --accent: oklch(0.57 0.16 258);
+    --title: oklch(1 0 0); /* the reference's heading is white (study.md); notes.md, "Heading" */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.2 0.035 260);
+      --ink: oklch(0.94 0.015 235);
+      --accent: oklch(0.43 0.12 258);
+      --title: var(--ink);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* The heading, white serif on the water near the top (study.md: two lines, top 10% of the screen). */
+  .title {
+    position: fixed; top: 7vh; left: 24px; right: 24px; margin: 0; text-align: center;
+    font: 400 clamp(26px, 7.6vw, 44px)/1.08 Georgia, "Times New Roman", serif; letter-spacing: -0.01em;
+    color: var(--title);
+  }
+  /* Without WebGL the page shows its ground, so the heading takes the ink to stay readable on it. */
+  :root[data-paint="fallback"] .title { color: var(--ink); }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<h1 class="title" data-ui-paint-text>Importing your screenshots…</h1>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // The pool. Waves, rate, wave height and the floor's depth are the water page's (test/pages/water.html), where
+  // Task 15 picked them by a look target (a cellular net of thin lines about a floor tile apart); the reference's
+  // net has 5 to 7 cells per short side (study.md), which 6 waves give. Short-side units.
+  const WATER = { waves: 6, speed: 1, depth: 0.6, floor: 1.0 };
+  // The climb (Source: frames, study.md): the card's top reaches the bottom edge at 2.2 s and climbs at 0.089 short
+  // sides per second, steadily. It lifts off the floor to RISE over the first RISE_TIME seconds of the climb
+  // (notes.md: RISE by a look target and a sweep; RISE_TIME so the card is off the floor before its white panel
+  // shows, 3 s x 0.089 = 0.27 short sides of card in view).
+  const CLIMB = { enter: 2.2, speed: 0.089 };
+  const RISE = 0.6;
+  const RISE_TIME = 3;
+  // The card (Source: frames): 0.59 short sides wide, a phone screenshot 2.17 times as tall as wide; never taller
+  // than 0.9 of the page, so on a wide page it shrinks to fit (the card's picture is the page's own area).
+  const CARD = { width: 0.59, aspect: 852 / 393, maxHeight: 0.9 };
+  // Ramp positions: the floor is the accent; the card's frame near the ink, its panel near the ground.
+  const TONE = { floor: 0.5, frame: 0.9, panel: 0.03 };
+  // The surface holds here under reduced motion: the card part way up, as in the reference at 10 s (bar.json settle).
+  const SETTLE = 10;
+
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  const smooth = (x) => { const k = clamp01(x); return k * k * (3 - 2 * k); };
+
+  // The card's print in card units (u across, v down, 0..1), each shape a tone painted over what is under it. A
+  // screenshot of a feed: a status row, a white panel with a chip, a dot, a line and two phone shapes, then a badge
+  // and caption lines on the dark lower part, and a row of icons at the bottom.
+  const PRINT = [
+    { box: [0.1, 0.02, 0.2, 0.03], r: 0.005, tone: 0.15 },
+    { box: [0.74, 0.02, 0.9, 0.03], r: 0.005, tone: 0.15 },
+    { box: [0.08, 0.05, 0.92, 0.4], r: 0.04, tone: TONE.panel },
+    { disc: [0.3, 0.1, 0.022], tone: 0.5 },
+    { box: [0.6, 0.125, 0.86, 0.165], r: 0.02, tone: 0.22 },
+    { disc: [0.645, 0.145, 0.016], tone: 0.62 },
+    { box: [0.2, 0.215, 0.45, 0.225], r: 0.005, tone: 0.45 },
+    { box: [0.27, 0.27, 0.41, 0.37], r: 0.02, tone: 0.78 },
+    { box: [0.29, 0.285, 0.39, 0.355], r: 0.01, tone: 0.12 },
+    { box: [0.6, 0.24, 0.79, 0.38], r: 0.025, tone: 0.78 },
+    { box: [0.62, 0.255, 0.77, 0.365], r: 0.012, tone: 0.1 },
+    { box: [0.64, 0.275, 0.75, 0.283], r: 0.003, tone: 0.5 },
+    { box: [0.64, 0.3, 0.72, 0.308], r: 0.003, tone: 0.5 },
+    { box: [0.64, 0.325, 0.74, 0.333], r: 0.003, tone: 0.5 },
+    { box: [0.4, 0.418, 0.6, 0.423], r: 0.003, tone: 0.65 },
+    { disc: [0.13, 0.46, 0.04], tone: 0.3 },
+    { disc: [0.13, 0.46, 0.026], tone: TONE.frame },
+    { box: [0.2, 0.452, 0.42, 0.462], r: 0.004, tone: 0.35 },
+    { box: [0.08, 0.495, 0.86, 0.505], r: 0.004, tone: 0.4 },
+    { box: [0.08, 0.515, 0.7, 0.525], r: 0.004, tone: 0.4 },
+    { box: [0.08, 0.54, 0.3, 0.547], r: 0.004, tone: 0.6 },
+    { box: [0.08, 0.92, 0.16, 0.95], r: 0.006, tone: 0.35 },
+    { box: [0.72, 0.925, 0.78, 0.948], r: 0.006, tone: 0.45 },
+    { box: [0.83, 0.925, 0.89, 0.948], r: 0.006, tone: 0.45 },
+  ];
+
+  // Signed distance to a rounded box (centre, half size, radius), px.
+  function roundBox(x, y, cx, cy, hw, hh, r) {
+    const qx = Math.abs(x - cx) - (hw - r);
+    const qy = Math.abs(y - cy) - (hh - r);
+    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+  }
+  const cover = (d) => clamp01(0.5 - d); // one px soft edge
+
+  // The card's size and place for a page of w x h CSS px, in short-side units (sizes) and picture px.
+  function layout(w, h, px) {
+    const side = Math.min(w, h);
+    let cw = CARD.width, ch = CARD.width * CARD.aspect;
+    const tall = h / side;
+    if (ch > CARD.maxHeight * tall) { ch = CARD.maxHeight * tall; cw = ch / CARD.aspect; }
+    return { tall, cw, ch, pxW: cw * side * px, pxH: ch * side * px };
+  }
+
+  // Two opaque pictures at the page's aspect: the floor (the accent's tone in red, no card in it) and the card (its
+  // tone in red, its coverage in green, never in alpha, drawn at the centre; the layer's `shift` moves it). Off the card
+  // the red holds the frame's tone, so the card's edge filters against its own frame, not a fringe of another tone.
+  // The card is built at device pixels so its edge stays crisp above dpr 1, capped at the GPU's texture size on the long
+  // side (`cap`, the painter's maxTextureSize); cap 0 gives an empty card, 1 x 1 with no coverage. The floor is one flat
+  // tone, so it is 1 x 1: the engine samples it linear and clamped, which gives the same tone everywhere.
+  function pictures(w, h, cap) {
+    const px = cap > 0 ? Math.min(devicePixelRatio || 1, cap / Math.max(w, h)) : 0;
+    const W = Math.max(1, Math.round(w * px)), H = Math.max(1, Math.round(h * px));
+    const L = layout(w, h, px);
+    const tone = new ImageData(1, 1);
+    const card = new ImageData(W, H);
+    const floor = Math.round(TONE.floor * 255);
+    const frame = Math.round(TONE.frame * 255);
+    tone.data.set([floor, floor, floor, 255]);
+    for (let o = 0; o < card.data.length; o += 4) {
+      card.data[o] = frame;
+      card.data[o + 3] = 255;
+    }
+    const cx = W / 2, cy = H / 2, x0 = cx - L.pxW / 2, y0 = cy - L.pxH / 2;
+    const U = (u) => x0 + u * L.pxW, V = (v) => y0 + v * L.pxH;
+    const shapes = PRINT.map((s) => s.box
+      ? { cx: (U(s.box[0]) + U(s.box[2])) / 2, cy: (V(s.box[1]) + V(s.box[3])) / 2, hw: (U(s.box[2]) - U(s.box[0])) / 2, hh: (V(s.box[3]) - V(s.box[1])) / 2, r: s.r * L.pxW, tone: s.tone }
+      : { cx: U(s.disc[0]), cy: V(s.disc[1]), hw: s.disc[2] * L.pxW, hh: s.disc[2] * L.pxW, r: s.disc[2] * L.pxW, tone: s.tone });
+    const body = { cx, cy, hw: L.pxW / 2, hh: L.pxH / 2, r: 0.07 * L.pxW };
+    if (px > 0) for (let y = Math.max(0, Math.floor(y0) - 1); y < Math.min(H, Math.ceil(y0 + L.pxH) + 1); y++) {
+      for (let x = Math.max(0, Math.floor(x0) - 1); x < Math.min(W, Math.ceil(x0 + L.pxW) + 1); x++) {
+        const px_ = x + 0.5, py = y + 0.5;
+        const inCard = cover(roundBox(px_, py, body.cx, body.cy, body.hw, body.hh, body.r));
+        if (inCard <= 0) continue;
+        let t = TONE.frame;
+        for (const s of shapes) {
+          const c = cover(roundBox(px_, py, s.cx, s.cy, s.hw, s.hh, Math.min(s.r, s.hw, s.hh)));
+          if (c > 0) t += (s.tone - t) * c;
+        }
+        const o = (y * W + x) * 4;
+        card.data[o] = Math.round(t * 255);
+        card.data[o + 1] = Math.round(inCard * 255);
+      }
+    }
+    const canvasOf = (img) => {
+      const c = document.createElement("canvas");
+      c.width = img.width;
+      c.height = img.height;
+      c.getContext("2d").putImageData(img, 0, 0);
+      return c;
+    };
+    return { floor: canvasOf(tone), card: canvasOf(card), layout: L };
+  }
+
+  // The card at time t: its centre (short-side units from the page centre, y up) and its height off the floor. One
+  // climb runs from the top at the bottom edge to the bottom past the top edge; then the next climb starts. It
+  // depends on t alone, so setTime(t) and a live frame at t draw the same pool.
+  function cardAt(L, t) {
+    const start = -(L.tall + L.ch) / 2;
+    const cycle = CLIMB.enter + (L.tall + L.ch) / CLIMB.speed;
+    const c = ((t % cycle) + cycle) % cycle;
+    const climbed = Math.max(0, c - CLIMB.enter);
+    return { y: start + CLIMB.speed * climbed, rise: RISE * smooth(climbed / RISE_TIME), cycle };
+  }
+
+  // The pool for a page of w x h with pictures capped at `cap`: the field (geometry, with the card as its lifted layer,
+  // climbing and rising per frame; the floor stays) and the material.
+  function pool(w, h, cap) {
+    const p = pictures(w, h, cap);
+    window.poolAt = (t) => cardAt(p.layout, t);
+    return {
+      fields: [fields.water({ waves: WATER.waves, speed: WATER.speed, depth: WATER.depth, floor: WATER.floor, settle: SETTLE,
+        layer: { picture: p.card, rise: (t) => cardAt(p.layout, t).rise, shift: (t) => [0, cardAt(p.layout, t).y] } })],
+      materials: [materials.water({ under: p.floor })],
+    };
+  }
+
+  // The card's size is capped by the GPU's texture limit, which the painter reads from its own context. So the painter
+  // starts on the pool with an empty card (cap 0) and gets the real one at once, in the same task, before any frame
+  // reaches the screen.
+  let size = [innerWidth, innerHeight, devicePixelRatio];
+  window.painter = paint(document.querySelector("canvas"), {
+    seed: 1, // ?seed= overrides it (the engine reads the URL)
+    detail: 0.5,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    ...pool(size[0], size[1], 0),
+    // The key from the upper left (the water page's direction), filtered by the water (the caustic), and an even
+    // ambient. The split 0.15 / 1.0 keeps the water page's flat-floor sum (1.15) and was picked by a look target
+    // from the frames (the water's lightness percentiles read off the frames; notes.md, "Light split").
+    lights: [lights.throughWater(lights.key({ dir: [-0.35, 0.45, 0.82], level: 0.15 })), lights.ambient(1.0)],
+  });
+  const cap = window.painter.maxTextureSize;
+  window.painter.set(pool(size[0], size[1], cap));
+  // A new page shape or pixel ratio needs new pictures (the card keeps its proportions): made once the page has stopped
+  // changing (150 ms), not per frame or per resize event. A pixel-ratio change (zoom, a move to another screen) fires no
+  // resize event on its own, so a media query on the current ratio calls the same rebuild and is re-armed after each
+  // change.
+  let timer = 0;
+  const rebuild = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const next = [innerWidth, innerHeight, devicePixelRatio];
+      if (next.every((v, i) => v === size[i])) return;
+      size = next;
+      window.painter.set(pool(size[0], size[1], cap));
+    }, 150);
+  };
+  addEventListener("resize", rebuild);
+  const watchRatio = () => {
+    const q = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+    q.addEventListener("change", () => { rebuild(); watchRatio(); }, { once: true });
+  };
+  watchRatio();
+</script>
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- PLANTED FAULT (palette-06-glimmer: an untagged vec3 colour literal in the tile field (multiplied by 0, so only the static scan sees it)). A copy of bars/06-glimmer/index.html with one planted fault; test/pages/faults.test.ts asserts that it fails palette at every seed in its bar.json. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glimmer</title>
+<!-- Bar 06, glimmer (from Agentic UI; study.md). A small stepped cluster of frosted-glass tiles, lit from BEHIND, in
+     the middle of a bare page. The tiles hold still and glow from inside; outside them the sheet has no surface
+     (coverage 0), so the page ground shows unlit, as the reference's black ground does.
+     Lights, in order (both glows sit behind the sheet; the transmit law reads every light behind together):
+       0 glow behind : the swell. About one tile wide, bright enough that the tile it sits under blows out to
+                       near-white. It drifts slowly on its own (a function of t), so single tiles swell and fade
+                       over about 1.2 s, and the eased pointer shifts it by 20% of its offset (the reference's
+                       parallax). On a portrait canvas the follow shrinks by width / height, so the shift stays
+                       within 0.2 x the offset in short-side units and a touch near the bottom keeps the swell on
+                       the cluster.
+       1 glow behind : the wash. A few tiles wide and steep: the tiles under it blow to near white and the tiles
+                       it misses fall dark, as the reference's dim tiles do. It drifts slowly on its own, so which
+                       tiles are dim changes; it too shifts by 20% of the eased pointer's offset, so the pointer
+                       steers where the light sits.
+       2 glow behind : the fill. Wide, faint and in the --accent hue, so a tile the wash misses reads as dim tinted glass.
+       3 ambient     : the tiles' dim front body, so an unlit tile still reads as a tile.
+     No key light: the tiles are flat panels; the look is light passing through them, not a glint on them.
+     Every number is in GLIMMER below; notes.md gives each one's source and why. -->
+<style>
+  :root {
+    --ground: oklch(0.84 0.012 250);
+    --ink: oklch(0.24 0.018 250);
+    --accent: oklch(0.60 0.14 250);
+    --accent-2: oklch(0.84 0.05 225);
+    --accent-3: oklch(0.68 0.10 295);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.16 0.01 250);
+      --ink: oklch(0.92 0.012 95);
+      --accent: oklch(0.64 0.14 250);
+      --accent-2: oklch(0.88 0.05 225);
+      --accent-3: oklch(0.72 0.10 295);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hud { position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 24px;
+    padding: clamp(12px, 3.5vmin, 24px) clamp(16px, 4.5vmin, 32px);
+    font: 500 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: 0.01em; }
+  .hud p { margin: 0; }
+  #name { font-weight: 600; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<div class="hud">
+  <p id="name" data-ui-paint-text>Glimmer</p>
+</div>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage, sheetToPage } from "paint-kit";
+
+  // GLIMMER: every number that lays out the tiles, places a light or times the drift. notes.md has each one's source.
+  const GLIMMER = {
+    // The cluster, in short-side units (1 is the canvas's shorter side): a 5 x 5 checkerboard (cells where i + j is
+    // even), two of its eight outer cells dropped by the seed, centred a little above the page centre.
+    pitch: 0.1,              // cell centre to centre, along x and y
+    sizes: [0.094, 0.088, 0.072, 0.056], // tile side: centre, the four diagonal neighbours, the outer axis cells, the outer corners
+    jitter: 0.004,           // seeded change to each tile's side, either way
+    corner: 0.14,            // corner radius, as a share of the tile's side
+    bevel: 0.007,            // width of the rounded edge
+    bevelDrop: 0.003,        // how far the edge falls over that width
+    lift: 0.035,             // the cluster's centre sits this far above the page centre
+    // The glass.
+    frost: 0.094,            // one centre tile: a lit tile fills almost evenly, with no crescent (notes.md, frost sweep)
+    etch: 0.45,              // the frost's fine etch at detail 1. Source: the owner, by eye (Task 5 look review, notes.md)
+    // Lights.
+    ease: 0.25,              // eased pointer: share of the way per 1/60 s tick (study: k 0.25 per frame)
+    // The swell's path is in short-side units about the cluster's centre, so it stays on the cluster at any aspect.
+    swell: { radius: 0.1, level: 6, tint: 0.6, follow: 0.2, ax: 0.19, ay: 0.18, px: 16, py: 13, phase: 1.1 },
+    // The wash: a few tiles wide and steep, so the tiles it sits under blow out and the far ones fall dark. It drifts
+    // too (short-side units about the cluster's centre), so which tiles are dim changes, as in the reference.
+    wash: { radius: 0.32, level: 2, tint: 1, follow: 0.2, ax: 0.09, ay: 0.09, px: 11, py: 7, phase: 0.6 },
+    // The fill: wide, faint and in the --accent hue (ramp 0.25), so a tile the wash misses reads as dim tinted glass,
+    // not the ambient's neutral body.
+    fill: { radius: 0.6, level: 0.1, hues: [0.25], tint: 1, follow: 0.2 },
+    ambient: 0.1,
+    // The widest aspect the follows keep in full: the 960 x 600 frame every number was set at.
+    followAspect: 1.6,
+  };
+
+  // The tiles as one shape field: height (flat, with a rounded edge), coverage (1 on a tile, 0 between) and slot 0
+  // (the glass). Static: nothing here reads time, so the tiles never move.
+  const TILES = /* glsl */ `
+uniform float uPitch, uJitter, uCorner, uBevel, uDrop, uLift;
+uniform vec4 uSizes; // not-colour: four tile sides in short-side units
+float boxSd(vec2 p, vec2 b, float r) { vec2 d = abs(p) - b + r; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r; }
+vec4 field(vec2 uv, vec2 q) {
+  vec4 none = vec4(0.0, 0.0, 0.0, -1.0);
+  vec3 warm = vec3(0.9, 0.4, 0.2); // the fault: a colour literal, not a page token
+  vec2 p = q - vec2(0.0, uLift);
+  vec2 id = floor(p / uPitch + 0.5);            // cell (i, j), -2..2 each way
+  if (any(greaterThan(abs(id), vec2(2.0)))) return none;
+  if (mod(id.x + id.y, 2.0) != 0.0) return none; // the checkerboard
+  // Two of the eight outer cells (max(|i|, |j|) = 2) are dropped, chosen by the seed. They sit at 45 degree steps
+  // around the centre, numbered 0..7 by angle.
+  if (max(abs(id.x), abs(id.y)) > 1.5) {
+    float k = mod(floor(atan(id.y, id.x) / 0.78539816 + 0.5) + 8.0, 8.0);
+    float a = floor(hash21(vec2(uSeed * 3.71, 5.0)) * 8.0);
+    float b = mod(a + 1.0 + floor(hash21(vec2(uSeed * 2.93, 11.0)) * 7.0), 8.0);
+    if (k == a || k == b) return none;
+  }
+  // The tile's side: by ring (centre, diagonal, outer axis, outer corner), with a seeded jitter.
+  float ring = id == vec2(0.0) ? 0.0 : (abs(id.x) == 1.0 ? 1.0 : (id.x == 0.0 || id.y == 0.0 ? 2.0 : 3.0));
+  float side = uSizes[int(ring)] + (hash21(id + uSeed * 7.31) * 2.0 - 1.0) * uJitter;
+  float d = boxSd(p - id * uPitch, vec2(0.5 * side), uCorner * side);
+  float aa = 1.0 / min(uRes.x, uRes.y);
+  float cov = 1.0 - smoothstep(-aa, aa, d);
+  if (cov <= 0.0) return none;
+  float edge = smoothstep(-uBevel, 0.0, d);
+  return vec4(0.004 - uDrop * edge * edge + 0.0 * warm.r, cov, 0.0, 0.0);
+}
+`;
+  const G = GLIMMER;
+  const tiles = fields.shape({
+    writes: ["height", "coverage", "slot"],
+    uniforms: { uPitch: G.pitch, uSizes: G.sizes, uJitter: G.jitter, uCorner: G.corner, uBevel: G.bevel,
+      uDrop: G.bevelDrop, uLift: G.lift },
+    glsl: TILES,
+  });
+
+  const S = G.swell;
+  const W = G.wash;
+  const F = G.fill;
+  const canvas = document.querySelector("canvas");
+  const aspect = () => (canvas.clientWidth || 1) / (canvas.clientHeight || 1);
+  // A point given in short-side units from the cluster's centre (y up), as the page fractions a glow's `at` takes.
+  // The engine's sheet frame does the conversion; the aspect is read per call, so it holds after a resize.
+  const fromCluster = (x, y) => {
+    const [px, py] = sheetToPage([x, G.lift + y, 0], aspect());
+    return [px, py];
+  };
+  // The engine's `follow` is in page fractions. On a portrait canvas a page fraction of height is h / w short-side
+  // units, so the follow is scaled by min(1, w / h): the shift stays within follow x the pointer's offset in
+  // short-side units on either axis (notes.md, break pass row 3). On a canvas wider than 16:10 a page fraction of
+  // width is more short-side units than at 960 x 600, so the follow is scaled by 1.6 / (w / h): the sideways shift
+  // never exceeds the 960 x 600 one, and the steep wash stays on the cluster (break pass row 5).
+  const followScale = () => Math.min(1, aspect(), G.followAspect / aspect());
+  const lightsFor = (k) => [
+    // The swell: a slow Lissajous over the cluster, a function of t alone, so setTime replays it.
+    lights.glow({
+      behind: true,
+      at: (t) => fromCluster(S.ax * Math.sin((2 * Math.PI * t) / S.px), -S.ay * Math.sin((2 * Math.PI * t) / S.py + S.phase)),
+      radius: S.radius, level: S.level, hues: "accents", tint: S.tint, follow: S.follow * k,
+    }),
+    // The wash: a Lissajous of its own over the cluster, also a function of t alone.
+    lights.glow({
+      behind: true,
+      at: (t) => fromCluster(W.ax * Math.sin((2 * Math.PI * t) / W.px), W.ay * Math.sin((2 * Math.PI * t) / W.py + W.phase)),
+      radius: W.radius, level: W.level, hues: "accents", tint: W.tint, follow: W.follow * k,
+    }),
+    lights.glow({ behind: true, at: () => fromCluster(0, 0), radius: F.radius, level: F.level, hues: F.hues,
+      tint: F.tint, follow: F.follow * k }),
+    lights.ambient(G.ambient),
+  ];
+  let k = followScale();
+  const painter = paint(canvas, {
+    seed: Number(new URLSearchParams(location.search).get("seed") ?? 1),
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent", "--accent-2", "--accent-3"] }),
+    fields: [tiles],
+    materials: [materials.glass({ frost: G.frost, etch: G.etch })],
+    lights: lightsFor(k),
+    pointer: { ease: G.ease },
+  });
+  // A turn between portrait and landscape, or a resize past 16:10, changes the follow's scale: the lights are made
+  // again, once per resize that changes it (the shader keeps its program; only uniforms change).
+  addEventListener("resize", () => {
+    const next = followScale();
+    if (next === k) return;
+    k = next;
+    painter.set({ lights: lightsFor(k) });
+  });
+</script>
+</body>
+</html>

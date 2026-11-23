@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Burn card</title>
+<!-- Bar 12, burn card (study.md: How We Feel, "Story Burn Fire Animation"). A paper card stands on a dark ground. One
+     click or key press on it starts a burn: a torn front (fields.burn's tear) starts in spots, opens holes and eats the
+     paper, the printed words with it. Behind the front the paper chars, then it is gone and the page's dark ground shows
+     through. A thin hot rim runs along the hole's edge, a dim glow warms the paper ahead, and specks cool in the burned
+     area (lights.ember's rim and specks). When the card is gone, a short black pause, then a plain HTML screen fades in. The burn starts
+     only on the user's action; `?burnAt=<seconds>` starts it at that paint time instead (bar.json's `query` gives the
+     gate and the sheet `burnAt=0`: they have no user). A second start is ignored. Under reduced motion the click shows
+     the end state at once. Without WebGL2 the card is a plain card and the click shows the next screen.
+     One slot: 0 the card's paper (materials.paper, scorch on, tone 0.5 = the --card accent). Fields: the sheet, the
+     card's cut (coverage only, 0 on the ground), the burn. Light 0 is the lamp, light 1 the ember, light 2 the ambient.
+     Every number is in notes.md with its source or "builder". `window.__card` is the card's box in CSS px. -->
+<style>
+  /* One look in both colour schemes: a dark stage and dark brown paper with light words (notes.md gives the order). */
+  :root {
+    --ground: oklch(0.12 0 0);
+    --ink: oklch(0.94 0.02 85);
+    --card: oklch(0.42 0.045 75);
+    --stage-ink: oklch(0.93 0.02 85);
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* The card's words, placed by layout() over the painted card and printed into the sheet. --u is the short side over
+     600 px (set by layout()). Sizes step along the type scale (TYPE): the largest that fits the size at 600 px times
+     --u, and none under 12 px. Without WebGL the box is a plain card (the fallback rule below). */
+  .card { --u: 1; position: fixed; box-sizing: border-box; margin: 0; display: flex; flex-direction: column;
+    justify-content: space-between; padding: calc(34px * var(--u)) calc(30px * var(--u)); font-family: Georgia, "Times New Roman", serif; }
+  .card p, .card h1 { margin: 0; }
+  .card-title { font-size: 24px; font-weight: 700; line-height: 1.1; letter-spacing: 0.01em; }
+  .card-sub { font-size: 14px; font-style: italic; line-height: 1.25; margin-top: calc(6px * var(--u)); }
+  .card-body { font-size: 16px; line-height: 1.35; }
+  .card-body strong { font-weight: 700; }
+  .card[hidden] { display: none; }
+  html[data-paint="fallback"] .card { background: var(--card); border-radius: calc(24px * var(--u)); }
+  /* The press target: a button over the card, so a click or Enter or Space on the card starts the burn. */
+  .hit { position: fixed; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; border-radius: 24px; }
+  .hit:focus-visible { outline: 3px solid var(--stage-ink); outline-offset: 4px; }
+  .hit[disabled] { cursor: default; }
+  /* The press target's name, on hover and keyboard focus only: placed by layout() inside the card's bottom edge. */
+  .tip { position: fixed; transform: translateX(-50%); visibility: hidden; white-space: nowrap; padding: 6px 12px; border-radius: 8px;
+    background: var(--ground); color: var(--stage-ink); font: 400 13px/1.2 Georgia, "Times New Roman", serif; pointer-events: none; }
+  .hit:hover + .tip, .hit:focus-visible + .tip { visibility: visible; }
+  .hit[disabled] + .tip { visibility: hidden; }
+  /* The next screen: plain HTML on the dark ground, after the card is gone. */
+  .after { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; color: var(--stage-ink); font-family: Georgia, "Times New Roman", serif;
+    opacity: 0; transition: opacity 0.5s ease-out; pointer-events: none; }
+  .after[hidden] { display: none; }
+  .after.shown { opacity: 1; pointer-events: auto; }
+  .after h2 { margin: 0; font-size: 32px; font-weight: 700; line-height: 1.1; }
+  .after p { margin: 0; font-size: 16px; line-height: 1.35; }
+  .after button { margin-top: 10px; min-height: 44px; padding: 0 28px; border: 1px solid var(--stage-ink); border-radius: 22px;
+    background: transparent; color: var(--stage-ink); font: 600 16px Georgia, "Times New Roman", serif; cursor: pointer; }
+  .after button:focus-visible { outline: 3px solid var(--stage-ink); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) { .after { transition: none; } }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<section class="card" aria-label="A note to burn">
+  <div>
+    <h1 class="card-title" data-paint-ink data-ui-paint-text>A note to burn</h1>
+    <p class="card-sub" data-paint-ink data-ui-paint-text>For what you are done carrying.</p>
+  </div>
+  <p class="card-body" data-paint-ink data-ui-paint-text>Say it plainly, once, so you know what it is. <strong data-ui-paint-text>Then hold it to the flame</strong> and watch it go.</p>
+</section>
+<button class="hit" type="button" aria-label="Burn the note" aria-describedby="hit-tip"></button>
+<span id="hit-tip" class="tip" role="tooltip">Burn the note</span>
+<section class="after" hidden>
+  <h2>It is gone.</h2>
+  <p>Nothing you wrote is kept.</p>
+  <button type="button">Write another</button>
+</section>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // The card, in short-side units (ss) about the page centre, y up (fields.shape's q). notes.md gives each one's why.
+  const CARD = {
+    half: [0.265, 0.45], // the study card's 1.7 : 1 portrait, 0.53 x 0.9 ss (test/pages/burn.html?card=1's)
+    corner: 0.04,
+  };
+  const SHEET = { warp: 0.35 };
+  // The burn: the front's speed (ss/s), the rag, the tear, and the char. CHAR is the study's band from paper to hole, 5%
+  // of the card's width; the scorch time makes the band that wide. LINGER is how long the embers outlive the paper.
+  const CHAR = 0.05 * 2 * CARD.half[0];
+  const BURN = { speed: 0.26, rag: 0.6, tear: 1, scorch: CHAR / 0.26, linger: 0.22 };
+  // The ember: a dim glow on the paper ahead, a thin hot rim on the hole's edge (1.8% of the card's width, measured on the
+  // reference) and specks in the burned area. The light: a warm lamp over the card (the owner chose it, notes.md) and the ambient.
+  const EMBER = {
+    kelvin: [1300, 1900],
+    level: 0.4,
+    reach: 0.07,
+    pull: 0.1,
+    span: 2 * CARD.half[0],
+    rim: { width: 0.018 * 2 * CARD.half[0], gain: 5, kelvin: [1400, 2300] },
+    specks: { gain: 7, density: 0.6, box: CARD.half, kelvin: [1300, 2100] },
+  };
+  const LAMP = { at: [0.42, 0.2, 0.9], aim: [0.5, 0.45, 0], cone: 42, soft: 22, level: 1.5, kelvin: 3200 };
+  const AMBIENT = 0.3;
+  // How far under the card's lowest edge the torn front's first arrival lies, ss: measured 0.095 to 0.115 at seeds 1 to 3.
+  // The click places the front there, behind the page's edge on a short view, so fire reaches the card at once on every view.
+  const FIRST_ARRIVAL = 0.12;
+  // The next screen: the black pause after the card is gone, in seconds (the study: about 0.4 s).
+  const PAUSE = 0.4;
+
+  const q = new URLSearchParams(location.search);
+  const burnAt = q.has("burnAt") && Number.isFinite(Number(q.get("burnAt"))) ? Number(q.get("burnAt")) : null;
+  const burn = fields.burn({ from: "bottom", ...BURN, startAt: burnAt });
+
+  // The card's cut: coverage 1 inside the rounded box, 0 on the ground, over one sheet px at its edge. It writes
+  // coverage only (slot -1), so the burn's coverage multiplies with it.
+  const cut = fields.shape({
+    writes: ["coverage"],
+    uniforms: { uHalf: CARD.half, uCorner: CARD.corner },
+    glsl: /* glsl */ `
+uniform vec2 uHalf;
+uniform float uCorner;
+vec4 field(vec2 uv, vec2 q) {
+  vec2 dq = abs(q) - (uHalf - uCorner);
+  float sd = length(max(dq, 0.0)) + min(max(dq.x, dq.y), 0.0) - uCorner;
+  return vec4(0.0, clamp(0.5 - sd * min(uRes.x, uRes.y), 0.0, 1.0), 0.0, -1.0);
+}
+`,
+  });
+
+  const painter = paint(document.querySelector("canvas"), {
+    seed: 1, // ?seed= overrides it (the engine reads the URL)
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--card"] }),
+    fields: [fields.sheet({ warp: SHEET.warp }), cut, fields.text(), burn],
+    materials: [materials.paper({ scorch: true, tone: 0.5 })],
+    lights: [
+      lights.lamp(LAMP),
+      lights.ember({ field: burn, ...EMBER }),
+      lights.ambient(AMBIENT),
+    ],
+  });
+  window.painter = painter;
+  window.__burn = burn; // for the bar's own page tests: startAt, start()
+
+  // Layout: the card's box (words and press target) over the painted card, and the type steps.
+  const card = document.querySelector(".card");
+  const hit = document.querySelector(".hit");
+  const tip = document.querySelector(".tip");
+  const TYPE = [12, 13, 14, 16, 18, 20, 24, 32, 40, 48, 64];
+  const typeStep = (px) => TYPE.filter((s) => s <= px).pop() ?? TYPE[0];
+  const WORDS = { ".card-title": 24, ".card-sub": 14, ".card-body": 16 };
+  const FLOOR = { ".card-title": 24 }; // the heading keeps the type scale's smallest heading size on a small view
+  function layout() {
+    const side = Math.min(innerWidth, innerHeight);
+    const [hx, hy] = CARD.half;
+    const box = { left: innerWidth / 2 - hx * side, top: innerHeight / 2 - hy * side, width: 2 * hx * side, height: 2 * hy * side };
+    for (const el of [card, hit]) Object.assign(el.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` });
+    card.style.setProperty("--u", String(side / 600));
+    for (const [sel, px] of Object.entries(WORDS)) card.querySelector(sel).style.fontSize = `${Math.max(FLOOR[sel] ?? 0, typeStep((px * side) / 600))}px`;
+    hit.style.borderRadius = `${CARD.corner * side}px`;
+    Object.assign(tip.style, { left: `${innerWidth / 2}px`, top: `${box.top + box.height - 44}px` });
+    window.__card = { x: box.left, y: box.top, w: box.width, h: box.height };
+  }
+  layout();
+  addEventListener("resize", layout);
+
+  // The start. A click or Enter on the card starts the burn once; a second is ignored (the field ignores it too). The
+  // front starts at the page's bottom edge, so the start places it at the card's lowest edge: the click burns at once on
+  // a tall view too. The next screen waits for the front itself, on the paint clock, so a slow or hidden page, or a
+  // resize, cannot show it over a burning card. Under reduced motion the card is gone at once, and so is the wait.
+  const after = document.querySelector(".after");
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  let started = false;
+  function showAfter() {
+    card.hidden = true;
+    hit.hidden = true;
+    after.hidden = false;
+    after.getBoundingClientRect(); // the fade runs from hidden
+    after.classList.add("shown");
+    after.querySelector("button").focus({ preventScroll: true });
+  }
+  // Short-side units from the page's bottom edge: half the page's height, about the page centre (fields.burn's q).
+  const pageHalf = () => 0.5 * (innerHeight / Math.min(innerWidth, innerHeight));
+  // Where the front stands once the card's top edge has burned through and its last embers are out.
+  const goneAt = () => pageHalf() + CARD.half[1] + burn.maxShift + burn.band + burn.linger;
+  function watchGone() {
+    if (burn.frontNow() >= goneAt()) setTimeout(showAfter, PAUSE * 1000);
+    else requestAnimationFrame(watchGone);
+  }
+  function activate() {
+    if (started) return;
+    started = true;
+    hit.disabled = true;
+    if (document.documentElement.dataset.paint === "fallback") return showAfter();
+    burn.start(pageHalf() - CARD.half[1] - FIRST_ARRIVAL);
+    if (reduced.matches) return showAfter();
+    watchGone();
+  }
+  hit.addEventListener("click", activate);
+  after.querySelector("button").addEventListener("click", () => location.reload());
+</script>
+</body>
+</html>

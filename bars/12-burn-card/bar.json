@@ -1,0 +1,32 @@
+{
+  "id": "12-burn-card",
+  "reference": {
+    "shelfKey": "60fps-design-shots-how-we-feel-story-burn-fire-animation",
+    "title": "How We Feel, Story Burn Fire Animation (60fps.design): a card burns from the bottom edge to the top on one tap, a thin glowing rim on the burned edge, then the page's dark ground and a plain next screen; builds from REFERENCE.md (fields.burn, materials.paper scorch, lights.ember)"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": ["--card"]
+  },
+  "detail": 0.6,
+  "seeds": [1, 2, 3],
+  "laws": ["burn", "tint"],
+  "alive": { "t0": 0, "t1": 4 },
+  "settle": 6.15,
+  "query": "burnAt=0",
+  "thresholds": {
+    "flash.tailSeconds": {
+      "value": 0,
+      "why": "a measuring span, not a pass mark: the flash check steps a page from 0 to settle (6.15 s here) plus this tail. Bar 12 rests at its settle time: with the burn started (query burnAt=0), the frames at 6.15, 6.5, 7, 7.5, 8.15, 9, 10 and 12 s are pixel-identical (largest difference 0 of 255, every step, seeds 1 to 3; measured 2026-11-19 with the page opened as the gate opens it). So the default 2 s tail repeats one frame and cannot hold a flash, and at about 0.25 s a frame in software WebGL it took the flash row to 123 s, over the 120 s every page test keeps. With 0 the check steps 0 to 6.15 s (370 frames) and still counts the whole burn, the front, the rim, the specks and the fade to the next screen."
+    }
+  },
+  "text": { "always": [".card-title", ".card-sub", ".card-body"], "lit": [] },
+  "beats": [
+    "A paper card stands on a dark ground, its words printed on it; nothing moves until the user clicks the card or presses Enter on it",
+    "The burn starts in spots near the card's bottom edge and a torn front climbs to the top, racing and stalling, with holes and islands; the printed words burn away with the paper",
+    "Behind the front the paper darkens over a thin rim, about 5% of the card's width, from paper to char, and then it is gone: the page's dark ground shows through the hole",
+    "A thin hot rim runs along the hole's edge, a dim glow warms the paper ahead of the front and fades with distance, and glowing specks cool in the burned area until the last is out",
+    "When the card is gone the screen holds dark for a moment, then a plain next screen fades in; a second click does not start a second burn"
+  ]
+}

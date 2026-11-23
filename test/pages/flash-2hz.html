@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit flash 2 Hz</title>
+<!-- The flash check's pass case: the whole viewport swaps between a light and a dark token at 2 Hz (4 transitions,
+     2 flashes, in any 1 s), under WCAG 2.3.1's limit of 3. It does not use the engine: a minimal `window.__paint`
+     hook draws the frame for `setTime(t)` (and for `?t=`), so the flash check's frozen stepping drives it exactly.
+     test/faults/flash-5hz is the same page at 5 Hz, which must fail. -->
+<style>
+  :root { --light: oklch(0.97 0 0); --dark: oklch(0.2 0 0); }
+  html, body { margin: 0; height: 100%; }
+</style>
+</head>
+<body>
+<script>
+  const HZ = 2; // flashes per second: one light and one dark half per cycle
+  const draw = (t) => {
+    const light = Math.floor(t * HZ * 2 + 1e-9) % 2 === 0;
+    document.body.style.background = light ? "var(--light)" : "var(--dark)";
+  };
+  draw(Number(new URLSearchParams(location.search).get("t") ?? 0));
+  window.__paint = { ready: true, setTime: draw, stats: () => ({ frames: 0 }) };
+</script>
+</body>
+</html>

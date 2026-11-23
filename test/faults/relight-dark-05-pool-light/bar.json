@@ -1,0 +1,41 @@
+{
+  "id": "relight-dark-05-pool-light",
+  "reference": {
+    "shelfKey": "planted-fault",
+    "title": "relight-dark-05-pool-light planted fault"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": [
+      "--accent"
+    ]
+  },
+  "detail": 0.5,
+  "view": {
+    "width": 393,
+    "height": 852
+  },
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "laws": [
+    "caustic"
+  ],
+  "alive": {
+    "t0": 10,
+    "t1": 11.6
+  },
+  "settle": 10,
+  "text": {
+    "always": [
+      ".title"
+    ],
+    "lit": []
+  },
+  "beats": [
+    "planted fault"
+  ]
+}

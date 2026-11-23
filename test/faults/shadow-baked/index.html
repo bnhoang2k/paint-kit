@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit shadow</title>
+<!-- PLANTED FAULT (shadow-baked: engine fault 'shadow-baked'). A copy of test/pages/shadow.html with exactly one change: the shadow is cast once from the light's declared place (test position 0) and held there, as a shadow painted into the colour is, so it stays when the light moves while the light's own shading moves. Only relight should fail on it, by the shadow law's shift (b)
+     (test/pages/shadow.test.ts).
+     Shadows (Phase 2 Task 7): a card raised off a desk, under one light that casts a shadow from the sheet's
+     height. The desk is matte at tone 0 (the ground token) on a gently warped sheet; the card is paper at tone 0.5
+     (the ramp's middle stop), a slab raised 0.03 short-side units with a bevelled rim, in the upper left of the
+     middle so its shadow falls on the desk on every side the light can send it. Light 0 casts the shadow; light 1 is
+     ambient. test/pages/shadow.test.ts reads it. Query options, each off by default:
+     - `lamp=1`: light 0 is a lamp above the upper left instead of the key;
+     - `bare=1`: no desk: the card sits on the bare ground (coverage 0 around it);
+     - `ground=1`: the shadow also darkens the bare ground (`shadow.ground`), with `bare=1`;
+     - `flat=1`: no card and no warp, so nothing is raised (the shadow law's floor).
+     Every look value here (the card's size, lift and bevel, the light's place, `soft`) is the builder's choice for a
+     card that reads as raised under one light, not a measured value. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.28 0.03 260);
+    --accent: oklch(0.7 0.1 60);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.27 0.02 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent: oklch(0.62 0.09 55);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script>globalThis.__PAINT_TEST_FAULT = 'shadow-baked';</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const q = new URLSearchParams(location.search);
+  const seed = Number(q.get("seed") ?? 1);
+  const on = (k) => q.get(k) === "1";
+  // The card: 0.5 x 0.3 short-side units with 0.03 corners, centred 0.12 left of and 0.06 above the middle, raised
+  // 0.03 with a rim that falls over its outer 0.01.
+  const CARD = { centre: [-0.12, 0.06], half: [0.25, 0.15], corner: 0.03, lift: 0.03, bevel: 0.01 };
+  const card = fields.shape({
+    writes: on("bare") ? ["height", "coverage", "slot"] : ["height", "slot"],
+    uniforms: { uCentre: CARD.centre, uHalf: CARD.half, uCorner: CARD.corner, uLift: CARD.lift, uBevel: CARD.bevel },
+    glsl: /* glsl */ `
+uniform vec2 uCentre, uHalf;
+uniform float uCorner, uLift, uBevel;
+float boxSd(vec2 p, vec2 b, float r) { vec2 d = abs(p) - b + r; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r; }
+vec4 field(vec2 uv, vec2 q) {
+  float d = boxSd(q - uCentre, uHalf, uCorner);
+  if (d > 0.0) return vec4(0.0, ${on("bare") ? "0.0" : "1.0"}, 0.0, -1.0);
+  float rim = smoothstep(-uBevel, 0.0, d);
+  return vec4(uLift * (1.0 - rim * rim), 1.0, 0.0, 1.0);
+}
+`,
+  });
+  const shadow = { soft: 0.8, ground: on("ground") };
+  const light = on("lamp")
+    ? lights.lamp({ at: [0.1, 0.05, 0.45], aim: [0.42, 0.45, 0], cone: 60, soft: 10, level: 1, kelvin: 4000, shadow })
+    : lights.key({ dir: [-0.6, 0.55, 0.65], level: 0.85, shadow });
+  const flat = on("flat");
+  paint(document.querySelector("canvas"), {
+    seed,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: flat ? [fields.sheet({ warp: 0 })] : on("bare") ? [card] : [fields.sheet({ warp: 0.4 }), card],
+    materials: [materials.matte({ tone: 0 }), materials.paper({ tone: 0.5 })],
+    lights: [light, lights.ambient(0.2)],
+  });
+</script>
+</body>
+</html>

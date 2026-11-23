@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Light stamp</title>
+<!-- PLANTED FAULT (shadow-baked). A copy of bars/07-light-stamp/index.html with exactly one change: the shadow is cast once from the light's declared place (test position 0) and held there, so it stays when the light moves while the light's own shading moves. Fails the shadow law's shift (b). It must fail the relight check on a kept bar as well as on its test page (Phase 2 Task 25). The rest of the page, its settings and its query options are the bar's. -->
+<!-- Bar 07, light stamp (from "Textured stamps"; study.md). A paper stamp lies among paper scraps on a desk, under
+     one key light that casts and a little ambient. The stamp's printed area is an embossed relief of ripple rings
+     (the builder's motif, not the reference's arches), shaded by the light and then screened into one-ink halftone
+     dots (finish.halftone, slot 1 only): lit faces print larger light dots, faces turned away fall back to bare ink.
+     Its pale paper margin carries the title and issue line, printed solid. The pointer turns the light's direction:
+     the light comes from the cursor's side (the owner, look review), so faces toward the cursor bloom.
+     Slots: 0 the desk (paper at the ground tone), 1 the printed area (matte, screened), 2 the stamp's margin (paper at
+     the accent), 3 the scraps (paper halfway from the ground to the accent). Light 0 is the key (relight's relief and shadow laws use it), light 1 the ambient.
+     Every number is in notes.md with its source or "builder". `window.__stamp` is the stamp's centre in CSS px. -->
+<style>
+  :root {
+    --ground: oklch(0.84 0.03 70);
+    --ink: oklch(0.36 0.12 25);
+    --accent: oklch(0.95 0.02 90);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.22 0.015 60);
+      --ink: oklch(0.88 0.05 75);
+      --accent: oklch(0.32 0.025 70);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* The stamp's bottom margin, placed by layout() over the painted margin. Its words are printed into the sheet. */
+  /* The words are printed on the stamp, so they scale with it: --u is the short side over 600 px (set by layout()),
+     so at the gate's 960 x 600 view the title is 20 px and the issue line 12 px. Neither goes under 12 px, so on a
+     phone or at 200% zoom the words stay readable (break-ui: the issue line read 6 to 7.5 px there); the margin
+     still holds them down to a 320 px short side. */
+  .stamp-words { --u: 1; position: fixed; margin: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: calc(2px * var(--u)); text-align: center; }
+  .stamp-words p { margin: 0; white-space: nowrap; }
+  .stamp-title { font: 700 max(12px, calc(20px * var(--u)))/1.1 Georgia, "Times New Roman", serif; letter-spacing: 0.08em; text-transform: uppercase; }
+  .stamp-issue { font: 600 max(12px, calc(12px * var(--u)))/1.2 Georgia, "Times New Roman", serif; letter-spacing: 0.04em; }
+</style>
+<script>globalThis.__PAINT_TEST_FAULT = 'shadow-baked';</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<div class="stamp-words">
+  <p class="stamp-title" data-paint-ink>First rain</p>
+  <p class="stamp-issue" data-paint-ink>Pond series, No. 7</p>
+</div>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // The stamp, in short-side units about the page centre, y up (fields.shape's q). notes.md gives each one's why.
+  const STAMP = {
+    centre: [0.06, 0.02],
+    half: [0.23, 0.3],
+    margin: [0.028, 0.028, 0.028, 0.1], // left, right, top, bottom: the bottom one holds the words
+    lift: 0.012,                        // how far the stamp stands off the desk
+    bevel: 0.004,                       // its cut edge rounds over this width
+    hole: 0.009,                        // perforation hole radius
+    pitch: 0.034,                       // perforation spacing
+    ring: 0.07,                         // ripple ring pitch
+    emboss: 0.016,                      // ripple relief height, crest over trough
+    reach: 0.35,                        // ripples fade over this distance from their source
+    fade: 0.02,                         // the relief eases to flat over this width inside the printed area's edge
+  };
+  // Three paper scraps on the desk: centre x, y, half width, half height (short-side units), turn in degrees.
+  const SCRAPS = [
+    [-0.55, 0.24, 0.17, 0.11, 12],
+    [-0.4, -0.3, 0.14, 0.09, -8],
+    [0.47, -0.22, 0.13, 0.2, 18],
+  ];
+  const SCRAP = { lift: 0.005, bevel: 0.003, tear: 0.004 };
+  // The key light: bar 03's (the nearest kept bar: dots on paper under a grazing key), with a shadow.
+  const KEY = { dir: [-0.7, 0.6, 0.4], level: 0.85, soft: 0.8 };
+  const AMBIENT = 0.15;
+  // The pointer: the light follows it with this lag (study.md: lit to dark within 0.2 s). Within about BIAS of the
+  // stamp's centre the rest direction still leans the light, so a pointer over the centre gives no sudden turn.
+  const POINTER = { tau: 0.05, bias: 0.12 };
+  // The halftone screen after light, on the printed area only (slot 1): cell in CSS px, 45 degrees, on the ink.
+  const SCREEN = { cell: 6, angle: 45, ground: 1, slots: [1] };
+
+  const stamp = fields.shape({
+    writes: ["height", "slot"],
+    uniforms: {
+      uC: STAMP.centre, uHalf: STAMP.half, uMargin: STAMP.margin, uLift: STAMP.lift, uBevel: STAMP.bevel,
+      uHole: STAMP.hole, uPitch: STAMP.pitch, uRing: STAMP.ring, uEmboss: STAMP.emboss, uReach: STAMP.reach, uFade: STAMP.fade,
+    },
+    glsl: /* glsl */ `
+uniform vec2 uC, uHalf;
+uniform vec4 uMargin; // not-colour: margin insets, short-side units
+uniform float uLift, uBevel, uHole, uPitch, uRing, uEmboss, uReach, uFade;
+float boxSd(vec2 p, vec2 b) { vec2 d = abs(p) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
+// Distance to the nearest perforation hole: holes sit on the outline, corners included, evenly along each side.
+float holeDist(vec2 p) {
+  vec2 n = max(floor(2.0 * uHalf / uPitch + 0.5), 1.0);
+  vec2 s = 2.0 * uHalf / n;
+  float ky = clamp(floor((p.y + uHalf.y) / s.y + 0.5), 0.0, n.y);
+  float kx = clamp(floor((p.x + uHalf.x) / s.x + 0.5), 0.0, n.x);
+  float a = length(vec2(abs(p.x) - uHalf.x, p.y + uHalf.y - ky * s.y));
+  float b = length(vec2(p.x + uHalf.x - kx * s.x, abs(p.y) - uHalf.y));
+  return min(a, b);
+}
+vec4 field(vec2 uv, vec2 q) {
+  vec2 p = q - uC;
+  float sd = max(boxSd(p, uHalf), uHole - holeDist(p));
+  if (sd > 0.0) return vec4(0.0, 1.0, 0.0, -1.0);
+  float rim = smoothstep(-uBevel, 0.0, sd);
+  float h = uLift * (1.0 - rim * rim);
+  // The printed area, inside the margin.
+  vec2 lo = -uHalf + vec2(uMargin.x, uMargin.w);
+  vec2 hi = uHalf - vec2(uMargin.y, uMargin.z);
+  vec2 ic = 0.5 * (lo + hi);
+  vec2 ih = 0.5 * (hi - lo);
+  float si = boxSd(p - ic, ih);
+  if (si > 0.0) return vec4(h, 1.0, 0.0, 2.0);
+  // Ripple rings from one seeded source: crests and troughs whose faces slope every way round it, fading with distance
+  // from the source and easing flat at the printed area's edge, so its frame casts no cliff.
+  vec2 c = ic + (vec2(hash11(uSeed + 3.0), hash11(uSeed + 5.0)) - 0.5) * ih * 0.8;
+  float pitch = uRing * (0.92 + 0.16 * hash11(uSeed + 9.0));
+  float r = length(p - c);
+  float wave = cos(6.2831853 * r / pitch) * exp(-r / uReach);
+  float e = 0.5 + 0.5 * wave;
+  return vec4(h + uEmboss * e * smoothstep(0.0, uFade, -si), 1.0, 0.0, 1.0);
+}
+`,
+  });
+
+  const rad = (d) => (d * Math.PI) / 180;
+  const scraps = fields.shape({
+    writes: ["height", "slot"],
+    uniforms: Object.fromEntries([
+      ...SCRAPS.map((s, i) => [`uS${i}`, s.slice(0, 4)]),
+      ["uTurn", SCRAPS.map((s) => rad(s[4]))],
+      ["uLift", SCRAP.lift], ["uBevel", SCRAP.bevel], ["uTear", SCRAP.tear],
+    ]),
+    glsl: /* glsl */ `
+uniform vec4 uS0, uS1, uS2; // not-colour: scrap centre and half size, short-side units
+uniform vec3 uTurn; // not-colour: the three scraps' turns, radians
+uniform float uLift, uBevel, uTear;
+float boxSd(vec2 p, vec2 b) { vec2 d = abs(p) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
+// One scrap: a turned sheet (each turn nudged by the seed) whose edges are torn by noise.
+float scrapSd(vec2 q, vec4 s, float turn, float k) {
+  float a = turn + (hash11(uSeed + k) - 0.5) * 0.3;
+  vec2 p = mat2(cos(a), sin(a), -sin(a), cos(a)) * (q - s.xy);
+  return boxSd(p, s.zw) + uTear * fbm(p * 45.0 + k * 17.0, 3);
+}
+vec4 field(vec2 uv, vec2 q) {
+  float sd = min(min(scrapSd(q, uS0, uTurn.x, 21.0), scrapSd(q, uS1, uTurn.y, 22.0)), scrapSd(q, uS2, uTurn.z, 23.0));
+  if (sd > 0.0) return vec4(0.0, 1.0, 0.0, -1.0);
+  float rim = smoothstep(-uBevel, 0.0, sd);
+  return vec4(uLift * (1.0 - rim * rim), 1.0, 0.0, 3.0);
+}
+`,
+  });
+
+  // The key's direction for a pointer offset m from the stamp's centre (short-side units, x right, y up): the
+  // rest direction's heading leans it by BIAS, the pointer turns it, and its height above the desk stays the key's.
+  const restH = Math.hypot(KEY.dir[0], KEY.dir[1]);
+  const keyDir = (m) => {
+    if (!m) return [...KEY.dir];
+    const hx = (KEY.dir[0] / restH) * POINTER.bias + m[0];
+    const hy = (KEY.dir[1] / restH) * POINTER.bias + m[1];
+    const len = Math.hypot(hx, hy) || 1;
+    return [(hx / len) * restH, (hy / len) * restH, KEY.dir[2]];
+  };
+  const lightsOf = (m) => [
+    lights.key({ dir: keyDir(m), level: KEY.level, shadow: { soft: KEY.soft } }),
+    lights.ambient(AMBIENT),
+  ];
+
+  const painter = paint(document.querySelector("canvas"), {
+    seed: 1, // ?seed= overrides it (the engine reads the URL)
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.15 }), scraps, stamp, fields.text()],
+    materials: [materials.paper({ tone: 0 }), materials.matte({ tone: 0.8 }), materials.paper({ tone: 0.5 }), materials.paper({ tone: 0.25 })],
+    lights: lightsOf(null),
+    finish: { halftone: SCREEN },
+  });
+  window.painter = painter;
+
+  // Layout: the words sit in the stamp's bottom margin, and the stamp's centre is where the pointer is measured from.
+  const words = document.querySelector(".stamp-words");
+  const view = { side: 1, cx: 0, cy: 0 };
+  function layout() {
+    const side = Math.min(innerWidth, innerHeight);
+    const toX = (x) => innerWidth / 2 + x * side;
+    const toY = (y) => innerHeight / 2 - y * side;
+    const [cx, cy] = STAMP.centre;
+    const [hx, hy] = STAMP.half;
+    const [ml, mr, , mb] = STAMP.margin;
+    Object.assign(words.style, {
+      left: `${toX(cx - hx + ml)}px`,
+      width: `${(2 * hx - ml - mr) * side}px`,
+      top: `${toY(cy - hy + mb)}px`,
+      height: `${mb * side}px`,
+    });
+    words.style.setProperty("--u", String(side / 600));
+    Object.assign(view, { side, cx: toX(cx), cy: toY(cy) });
+    window.__stamp = { x: view.cx, y: view.cy };
+  }
+  layout();
+  addEventListener("resize", layout);
+
+  // The page's own motion: the light easing toward the pointer. With no input it never calls set, so the checks'
+  // own light changes stand. Under reduced motion the light goes straight to the pointer (no easing).
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  const st = { m: null, target: null };
+  let raf = 0;
+  let last = 0;
+  function tick(now) {
+    raf = 0;
+    const dt = last ? Math.min((now - last) / 1000, 1 / 30) : 1 / 60;
+    last = now;
+    const m = st.m ?? [0, 0];
+    const k = reduced.matches ? 1 : 1 - Math.exp(-dt / POINTER.tau);
+    const next = [m[0] + (st.target[0] - m[0]) * k, m[1] + (st.target[1] - m[1]) * k];
+    const busy = Math.hypot(st.target[0] - next[0], st.target[1] - next[1]) > 1e-4;
+    st.m = busy ? next : [...st.target];
+    painter.set({ lights: lightsOf(st.m) });
+    if (busy) raf = requestAnimationFrame(tick);
+    else last = 0;
+  }
+  addEventListener("pointermove", (e) => {
+    st.target = [(e.clientX - view.cx) / view.side, (view.cy - e.clientY) / view.side];
+    if (!raf) raf = requestAnimationFrame(tick);
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit param channel</title>
+<!-- The sheet's param channel, with known values per patch (uv y is up, so uv.y > 0.5 is the top):
+     "under" writes param 0.3 on the top half and discards the bottom half.
+     "over" writes param 0.7 in four columns, left to right: coverage 1, coverage 0.5, coverage 0.4, discarded.
+     "after" writes height only, so it must leave param alone.
+     ?dir=1 makes "over" write direction (0, 1) as well, so both share the direction image.
+     The material shows param as a tone from the ground (0) to the ink (1), so the shot reads s.param. -->
+<style>
+  :root { --ground: oklch(0.9 0.02 90); --ink: oklch(0.3 0.03 90); }
+  html, body { margin: 0; height: 100%; background: var(--ground); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, lights, fromPage } from "paint-kit";
+
+  const withDir = new URLSearchParams(location.search).has("dir");
+  const showParam = { id: "showparam", uniforms: {}, laws: ["relief"], glsl: `MatOut mat_$(Surf s) { return matBase(s, mix(uGround, uInk, s.param)); }` };
+
+  window.painter = paint(document.querySelector("canvas"), {
+    seed: 1,
+    palette: fromPage({ ground: "--ground", ink: "--ink" }),
+    fields: [
+      fields.shape({
+        writes: ["param"],
+        glsl: `
+          vec4 field(vec2 uv, vec2 q) { if (uv.y <= 0.5) discard; return vec4(0.0); }
+          float fieldParam(vec2 uv, vec2 q) { return 0.3; }`,
+      }),
+      fields.shape({
+        writes: withDir ? ["coverage", "param", "direction"] : ["coverage", "param"],
+        glsl: `
+          vec4 field(vec2 uv, vec2 q) {
+            if (uv.x > 0.75) discard;
+            return vec4(0.0, uv.x < 0.25 ? 1.0 : uv.x < 0.5 ? 0.5 : 0.4, 0.0, 0.0);
+          }
+          float fieldParam(vec2 uv, vec2 q) { return 0.7; }
+          vec2 fieldDir(vec2 uv, vec2 q) { return vec2(0.0, 1.0); }`,
+      }),
+      fields.shape({ writes: ["height"], glsl: `vec4 field(vec2 uv, vec2 q) { return vec4(0.001, 1.0, 0.0, 0.0); }` }),
+    ],
+    materials: [showParam],
+    lights: [lights.ambient(1)],
+    finish: { grain: 0 },
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heat tint</title>
+<!-- PLANTED FAULT (film-view-normal). A copy of bars/11-heat-tint/index.html with exactly one change: the film reads n.v in place of v.h. The film law's (b), and (e) to measure. It must fail the relight check on a kept bar as well as on its test page (Phase 2 Task 25). The rest of the page, its settings and its query options are the bar's. -->
+<!-- Bar 11, heat tint (study.md: temper colours on steel; no single reference). A steel bar lies on a desk, heated at its
+     top end: an oxide film grew on it, thickest at the hot end. The film (materials.film on iron) makes the temper bands,
+     blue at the hot end, then purple, brown and straw toward the cold end. The bar's face is crowned across its width,
+     so the key light's highlight is a stripe down its length that shows every band at once. The pointer is the light:
+     the key comes from a point above the pointer, so moving it turns the key off the eye and back, which slides the
+     stripe across the bar and shifts the band hues a little. No glow and no heat colour: tempering heat is far below a
+     visible glow (spec, Wave 3). No tilt: a tilt does not shift film hue.
+     Slots: 0 the desk (matte, the ground), 1 the bar (film). Light 0 is the key (relight's highlight and iridescence
+     laws use it), light 1 the ambient. Fields: the bar (height, coverage, slot, param), then the brushed grain (height
+     and direction, drawn after the param writer). Every number is in notes.md with its source or "builder".
+     `window.__heat` gives the bar's body in CSS px and which end is hot. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.28 0.03 260);
+    --accent-warm: oklch(0.66 0.13 30);
+    --accent-cool: oklch(0.55 0.11 200);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.27 0.03 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent-warm: oklch(0.7 0.12 35);
+      --accent-cool: oklch(0.62 0.1 205);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script>globalThis.__PAINT_TEST_FAULT = 'film-view-normal';</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // The bar, in short-side units (ss) about the page centre, y up (fields.shape's q). notes.md gives each one's why.
+  const BAR = {
+    half: [0.1, 0.4], // half width, half length
+    crown: 0.034,     // the face's rise across the width: edge slope 2 x 0.034 / 0.1 = 0.68, film-metal.html's
+    cap: 0.03,        // each end rounds down to the desk over this length
+  };
+  // The thickness: param 1 at the hot end (top), 0 at the cold end, linear along the body between the caps.
+  const FILM = { range: [26, 54], ior: 2.343, pull: 0.3, target: "nearest" };
+  // Brushed grain along the bar, scaled by detail: amplitude (ss at detail 1), cycles per ss across and along.
+  const GRAIN = { amp: 0.0005, across: 200, along: 6 };
+  // The desk: a still, gentle warp that clears to flat near the bar (bar 10's page).
+  const DESK = { warp: 0.004, freq: 2.2, clear: 0.03 };
+  // The key (film-metal.html's place and level), the ambient. LAMP: the key comes from a point this high (ss) above
+  // the pointer. TAU: the key eases toward the pointer with this time constant (s).
+  const KEY = { dir: [0.55, 0.05, 0.83], level: 0.85 };
+  const AMBIENT = 0.25;
+  const LAMP = 0.5;
+  const TAU = 0.1;
+
+  const SHARED = /* glsl */ `
+uniform vec2 uHalf;
+bool onBar(vec2 q) { return abs(q.x) < uHalf.x && abs(q.y) < uHalf.y; }
+`;
+  const bar = fields.shape({
+    writes: ["height", "coverage", "slot", "param"],
+    uniforms: { uHalf: BAR.half, uCrown: BAR.crown, uCap: BAR.cap, uWarp: DESK.warp, uFreq: DESK.freq, uClear: DESK.clear },
+    glsl: SHARED + /* glsl */ `
+uniform float uCrown, uCap, uWarp, uFreq, uClear;
+vec4 field(vec2 uv, vec2 q) {
+  if (!onBar(q)) {
+    // The desk: a still warp (no clock), flat within uClear of the bar so the bar meets it at height 0.
+    vec2 d = abs(q) - uHalf;
+    float sd = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+    return vec4(uWarp * (0.5 + 0.5 * fbm(q * uFreq + uSeed * 1.7, 3)) * smoothstep(0.0, uClear, sd), 1.0, 0.0, 0.0);
+  }
+  // The face: a parabolic crown across the width, falling to 0 at each side, and at each end over uCap, so the bar's
+  // height never steps at its outline.
+  float x = q.x / uHalf.x;
+  float e = max(abs(q.y) - (uHalf.y - uCap), 0.0) / uCap;
+  return vec4(uCrown * (1.0 - x * x) * (1.0 - e * e), 1.0, 0.0, 1.0);
+}
+// The oxide's thickness: 1 at the hot end (top), 0 at the cold end, linear along the body; each cap keeps its end's value.
+float fieldParam(vec2 uv, vec2 q) {
+  if (!onBar(q)) return 0.0;
+  return clamp(0.5 + 0.5 * q.y / (uHalf.y - uCap), 0.0, 1.0);
+}
+`,
+  });
+  // The brushed grain: fine scratches along the bar (height, by detail) and their direction. Drawn after the bar, it
+  // writes no param, so the bar's thickness stays.
+  const grain = fields.shape({
+    writes: ["height", "direction"],
+    uniforms: { uHalf: BAR.half, uGrain: [GRAIN.amp, GRAIN.across, GRAIN.along] },
+    glsl: SHARED + /* glsl */ `
+uniform vec3 uGrain; // not-colour: amplitude ss, cycles per ss across and along
+vec4 field(vec2 uv, vec2 q) {
+  if (!onBar(q)) return vec4(0.0, 1.0, 0.0, 0.0);
+  float x = q.x / uHalf.x;
+  float n = snoise(vec2(q.x * uGrain.y, q.y * uGrain.z) + uSeed * 0.29);
+  return vec4(uGrain.x * uDetail * n * (1.0 - x * x), 1.0, 0.0, 0.0);
+}
+vec2 fieldDir(vec2 uv, vec2 q) { return onBar(q) ? vec2(0.0, 1.0) : vec2(0.0); }
+`,
+  });
+
+  // The key from a lamp point p (ss about the bar's centre, y up) LAMP above the desk.
+  const keyFrom = (p) => {
+    const len = Math.hypot(p[0], p[1], LAMP);
+    return [p[0] / len, p[1] / len, LAMP / len];
+  };
+  const lightsOf = (p) => [lights.key({ dir: p ? keyFrom(p) : [...KEY.dir], level: KEY.level }), lights.ambient(AMBIENT)];
+
+  const painter = paint(document.querySelector("canvas"), {
+    seed: 1, // ?seed= overrides it (the engine reads the URL)
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent-warm", "--accent-cool"] }),
+    fields: [bar, grain],
+    materials: [
+      materials.matte({ tone: 0 }),
+      materials.film({ range: FILM.range, ior: FILM.ior, base: "metal", pull: FILM.pull, pullTarget: FILM.target }),
+    ],
+    lights: lightsOf(null),
+  });
+  window.painter = painter;
+
+  // Layout: the bar's body (between its caps) in CSS px, and where the pointer is measured from.
+  const view = { side: 1, cx: 0, cy: 0 };
+  function layout() {
+    const side = Math.min(innerWidth, innerHeight);
+    Object.assign(view, { side, cx: innerWidth / 2, cy: innerHeight / 2 });
+    const [hx, hy] = BAR.half;
+    const body = hy - BAR.cap;
+    window.__heat = {
+      body: { x: view.cx - hx * side, y: view.cy - body * side, w: 2 * hx * side, h: 2 * body * side },
+      hot: "top",
+      range: FILM.range,
+    };
+  }
+  layout();
+  addEventListener("resize", layout);
+
+  // The pointer is the light: the key eases toward the point above the pointer (bar 10's light job, with the key's
+  // height fixed above the desk instead of above the eye's line, so its angle off the eye changes). Until the pointer
+  // moves the page never calls set, so the checks' own light changes stand. Under reduced motion the key goes straight
+  // to the pointer (no easing): the page's only use of the media query.
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  const rest = [(KEY.dir[0] / KEY.dir[2]) * LAMP, (KEY.dir[1] / KEY.dir[2]) * LAMP];
+  const st = { p: null, target: null };
+  let raf = 0;
+  let last = 0;
+  function tick(now) {
+    raf = 0;
+    if (!st.target) return;
+    const dt = last ? Math.min((now - last) / 1000, 1 / 30) : 1 / 60;
+    last = now;
+    const p = st.p ?? rest;
+    const k = reduced.matches ? 1 : 1 - Math.exp(-dt / TAU);
+    const next = [p[0] + (st.target[0] - p[0]) * k, p[1] + (st.target[1] - p[1]) * k];
+    const busy = Math.hypot(st.target[0] - next[0], st.target[1] - next[1]) > 1e-4;
+    st.p = busy ? next : [...st.target];
+    painter.set({ lights: lightsOf(st.p) });
+    if (busy) raf = requestAnimationFrame(tick);
+    else last = 0;
+  }
+  addEventListener("pointermove", (e) => {
+    st.target = [(e.clientX - view.cx) / view.side, (view.cy - e.clientY) / view.side];
+    if (!raf) raf = requestAnimationFrame(tick);
+  });
+</script>
+</body>
+</html>

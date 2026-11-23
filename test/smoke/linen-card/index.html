@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Linen card</title>
+<!-- Smoke page: a linen card under a desk lamp. Copied from bar 01 (lamp on paper): the same paint call (a paper
+     sheet, its printed words in the sheet's ink, paper material, one lamp and the room light), plus one shape field
+     for what makes this card linen: a raised card with a cut edge and a pressed linen weave. The lamp hangs over the
+     card's top-left corner, out of frame; it turns to aim where the pointer is. Evening: the room is dim and the
+     lamp decides what reads. Light 0 is the lamp (relight's falloff law), light 1 the ambient. notes.md gives each
+     number's source. bar.json names the text: #note is lit (the lamp decides whether it reads). -->
+<style>
+  :root {
+    /* Natural linen card: a warm grey-white. Ink: a deep oxblood letterpress ink. */
+    --ground: oklch(0.91 0.018 92);
+    --ink: oklch(0.33 0.09 25);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      /* A dark charcoal linen card printed in a pale cream ink. */
+      --ground: oklch(0.29 0.01 75);
+      --ink: oklch(0.92 0.03 90);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* The card's box. Same size as the shape field's card (CARD below): 0.96 x 0.68 short-side units, shrunk to 86% of
+     the width on a narrow frame. It holds the words; the paint draws the card itself. */
+  .card { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(96vmin, 86vw); aspect-ratio: 96 / 68; display: grid; place-items: center; }
+  #note { margin: 0; text-align: center; font-family: Georgia, "Times New Roman", serif; font-size: clamp(14px, 3.4vmin, 22px);
+    line-height: 1.5; }
+  #note .title { font-size: 1.6em; font-style: italic; font-weight: 700; margin-bottom: 0.4em; }
+  #note p { margin: 0; }
+  #note .sign { margin-top: 0.6em; font-style: italic; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<div class="card">
+  <div id="note" data-paint-ink>
+    <p class="title" data-ui-paint-text>Supper on Thursday</p>
+    <p data-ui-paint-text>seven o'clock, at the long table</p>
+    <p data-ui-paint-text>bring nothing, stay late</p>
+    <p class="sign" data-ui-paint-text>with love, M.</p>
+  </div>
+</div>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // CARD: the card's size and its relief. notes.md gives each number's source.
+  const CARD = {
+    halfW: 0.48,       // half width, short-side units (an A6 card, 148 x 105 mm, at 0.68 ss tall: 1 ss = 154 mm)
+    halfH: 0.34,       // half height, short-side units
+    fit: 0.86,         // on a narrow frame the card shrinks to this share of the width (.card's 86vw)
+    thick: 0.0021,     // card thickness, ss: 0.33 mm (300 gsm card) at 154 mm per ss
+    pitch: 0.008,      // linen thread pitch, ss (4.8 px at 600 px): about 5 sheet texels per thread at dpr 1, so it does not alias
+    depth: 0.0006,     // linen emboss depth at detail 1, ss (0.09 mm): builder's look value, raised from 0.0003 (weave not visible)
+  };
+  // LAMP: a desk lamp over the card's top-left corner. Its aim follows the pointer over the card.
+  const LAMP = {
+    at: [0.14, 0.1, 0.55], // bulb: page fractions, z in short-side units over the desk
+    rest: [0.5, 0.5],      // aim at rest: the card's centre, where the words are
+    cone: 34,              // half angle, degrees
+    soft: 14,              // soft edge inside the cone, degrees
+    level: 0.6,            // light on a flat sheet at the aim point
+    kelvin: 3000,          // a warm-white desk lamp
+    followTau: 0.1,        // the aim's lag behind the pointer, s (bar 01's value)
+  };
+  const ROOM = 0.06;       // ambient: an evening room (bar 01's night level)
+
+  const LINEN = /* glsl */ `
+uniform vec2 uHalf;
+uniform float uFit, uThick, uPitch, uDepth;
+float hash1(float n) { return hash21(vec2(n, uSeed)); }
+// One family of threads across axis a (lines run along b): a rounded profile per thread, its width and height varied
+// per thread (linen's uneven yarn), and slubs (thick spots) along each thread from noise.
+float threads(float a, float b, float salt) {
+  float i = floor(a / uPitch);
+  float f = fract(a / uPitch) - 0.5;
+  float w = 0.32 + 0.12 * hash1(i + salt);                    // half width of the thread, share of a pitch
+  float slub = 0.75 + 0.5 * smoothstep(0.2, 0.8, snoise(vec2(b * 18.0, i * 0.37 + salt)) * 0.5 + 0.5);
+  float prof = 1.0 - smoothstep(0.0, w, abs(f));
+  return prof * slub * (0.8 + 0.4 * hash1(i * 1.7 + salt + 9.0));
+}
+vec4 field(vec2 uv, vec2 q) {
+  vec2 frame = 0.5 * uRes / min(uRes.x, uRes.y);
+  float k = min(1.0, uFit * frame.x / uHalf.x);
+  vec2 h = uHalf * k;
+  vec2 d = abs(q) - h;
+  float sd = max(d.x, d.y);
+  float aa = 1.5 / min(uRes.x, uRes.y);
+  float inside = 1.0 - smoothstep(-aa, aa, sd);
+  // The weave: warp and weft pressed into the card face, scaled by detail (fine structure only).
+  float weave = 0.5 * (threads(q.x, q.y, 0.0) + threads(q.y, q.x, 5.0));
+  float height = inside * (uThick + uDepth * uDetail * weave);
+  return vec4(height, 1.0, 0.0, 0.0);
+}
+`;
+  const card = fields.shape({
+    writes: ["height"],
+    uniforms: { uHalf: [CARD.halfW, CARD.halfH], uFit: CARD.fit, uThick: CARD.thick, uPitch: CARD.pitch, uDepth: CARD.depth },
+    glsl: LINEN,
+  });
+
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  const st = { aim: [...LAMP.rest], target: [...LAMP.rest] };
+  const cardEl = document.querySelector(".card");
+
+  const lightsOf = () => [
+    lights.lamp({ at: LAMP.at, aim: [st.aim[0], st.aim[1], 0], cone: LAMP.cone, soft: LAMP.soft, level: LAMP.level, kelvin: LAMP.kelvin }),
+    lights.ambient(ROOM),
+  ];
+
+  const painter = paint(document.querySelector("canvas"), {
+    seed: Number(new URLSearchParams(location.search).get("seed") ?? 1),
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink" }),
+    fields: [fields.sheet({ warp: 0.4 }), card, fields.text({ selector: "#note" })],
+    materials: [materials.paper()],
+    lights: lightsOf(),
+  });
+
+  // One frame loop for the page's own motion: the aim easing to the pointer. With no pointer (the checks) the page
+  // never calls set, so the hook's own light changes stand.
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  let raf = 0;
+  let last = 0;
+  function tick(now) {
+    raf = 0;
+    const dt = last ? Math.min((now - last) / 1000, 1 / 30) : 1 / 60;
+    last = now;
+    const dx = st.target[0] - st.aim[0], dy = st.target[1] - st.aim[1];
+    let busy = false;
+    if (Math.hypot(dx, dy) > 1e-4 && !reduced.matches) {
+      const k = 1 - Math.exp(-dt / LAMP.followTau);
+      st.aim[0] += dx * k;
+      st.aim[1] += dy * k;
+      busy = true;
+    } else st.aim = [...st.target];
+    painter.set({ lights: lightsOf() });
+    if (busy) raf = requestAnimationFrame(tick);
+    else last = 0;
+  }
+  // The aim stays on the card: the pointer's place, clamped to the card's box.
+  addEventListener("pointermove", (e) => {
+    const r = cardEl.getBoundingClientRect();
+    st.target = [clamp(e.clientX, r.left, r.right) / innerWidth, clamp(e.clientY, r.top, r.bottom) / innerHeight];
+    if (!raf) raf = requestAnimationFrame(tick);
+  });
+</script>
+</body>
+</html>

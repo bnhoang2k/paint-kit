@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foil card</title>
+<!-- PLANTED FAULT (iridescence-clock). A copy of bars/10-foil-card/index.html with exactly one change: each grating band's wavelength cycles through the spectrum on the paint clock (120 nm a second). Test-page twin fails the iridescence law's clock condition (c). It must fail the relight check on a kept bar as well as on its test page (Phase 2 Task 25). The rest of the page, its settings and its query options are the bar's. -->
+<!-- Bar 10, foil card (study.md: holo trading cards, several sources; no single reference). A paper card lies on a
+     paper page under one key light that casts and a little ambient. The card's art window is holographic foil
+     (materials.foil) with sunburst grooves: they run along rays from one seeded point, so each point's groove angle
+     differs and the grating sends each a different colour; tilting the card sweeps the colour round the burst. Printed
+     line art (a sun ring, a frame and three wave lines, the sheet's picture ink) sits over the foil and covers it, so
+     it stays readable. The card's words are printed on its paper face, not over the foil.
+     Slots: 0 the page (paper at the ground tone), 1 the card face (paper at tone 0.25, the card-stock accent), 2 the art
+     window (foil). Light 0 is the key (relight's relief, shadow and iridescence laws use it), light 1 the ambient.
+     The pointer's job (both: it tilts the card and turns the key) and the foil's pull are the paint call's below, as
+     The owner kept them in the look review. Every number is in notes.md with its source or "builder".
+     `window.__card` is the card's centre in CSS px. -->
+<style>
+  :root {
+    --ground: oklch(0.86 0.02 160);
+    --ink: oklch(0.27 0.05 285);
+    --card: oklch(0.965 0.012 95);
+    --accent-warm: oklch(0.72 0.11 55);
+    --accent-cool: oklch(0.56 0.09 215);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.23 0.02 200);
+      --ink: oklch(0.93 0.012 95);
+      --card: oklch(0.34 0.02 230);
+      --accent-warm: oklch(0.74 0.1 60);
+      --accent-cool: oklch(0.6 0.08 210);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* The card's words, placed by layout() over the painted card face and printed into the sheet. --u is the short side
+     over 600 px (set by layout()). Their sizes follow the card too, in steps: layout() gives each the largest size on
+     the type scale (TYPE) that fits its size at 600 px times --u, and none goes under 12 px (bar 07's floor). */
+  .card-words { --u: 1; position: fixed; margin: 0; display: flex; align-items: center; justify-content: space-between;
+    box-sizing: border-box; padding: 0 calc(4px * var(--u)); }
+  .card-words p { margin: 0; white-space: nowrap; }
+  .card-box p { white-space: normal; }
+  .card-box { flex-direction: column; align-items: flex-start; justify-content: center; gap: calc(6px * var(--u)); }
+  .card-title { font: 700 20px/1.1 Georgia, "Times New Roman", serif; letter-spacing: 0.02em; }
+  .card-no { font: 600 12px/1.1 Georgia, "Times New Roman", serif; letter-spacing: 0.04em; }
+  .card-line { font: italic 400 14px/1.25 Georgia, "Times New Roman", serif; }
+  .card-foot { font: 600 12px/1.2 Georgia, "Times New Roman", serif; letter-spacing: 0.04em; }
+</style>
+<script>globalThis.__PAINT_TEST_FAULT = 'iridescence-clock';</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<div class="card-words card-head">
+  <p class="card-title" data-paint-ink data-ui-paint-text>Low tide</p>
+  <p class="card-no" data-paint-ink data-ui-paint-text>No. 04</p>
+</div>
+<div class="card-words card-box">
+  <p class="card-line" data-paint-ink data-ui-paint-text>The shore holds the light.</p>
+  <p class="card-foot" data-paint-ink data-ui-paint-text>Sunburst foil</p>
+</div>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage, easeOfTau } from "paint-kit";
+
+  // The card, in short-side units (ss) about the page centre, y up (fields.shape's q). notes.md gives each one's why.
+  const CARD = {
+    centre: [0, 0],
+    half: [0.2, 0.28],    // 63 x 88 mm, a trading card's shape
+    corner: 0.019,        // 3 mm on a 63 mm card
+    lift: 0.012,          // bar 07's stamp: how far the card stands off the page
+    bevel: 0.004,         // its cut edge rounds over this width
+    head: 0.012,          // the title band's inset from the card's top edge
+    win: [0.025, 0.075, 0.3], // the art window: side inset, top inset, height
+    line: 0.004,          // printed line width (frame, sun ring, waves)
+    sun: 0.045,           // the sun ring's radius, round the burst's centre
+    waves: [0.006, 26, 0.028], // wave amplitude, cycles per ss, spacing between the three lines
+  };
+  // The page: a paper sheet with a gentle, still warp that clears to flat under and near the card.
+  const PAGE = { warp: 0.004, freq: 2.2, clear: 0.03 };
+  // The key light (casts), the ambient. The foil: grating options, pull default.
+  const KEY = { dir: [-0.6, 0.5, 0.62], level: 0.85, soft: 0.8 };
+  const AMBIENT = 0.15;
+  const FOIL = { spacing: 1.5, orders: 2, roughness: 0.3, tone: 0 };
+  // The look review's three knobs, as the owner kept them (notes.md, Look review).
+  const LOOK = { job: "both", pull: 0.3, target: "nearest" };
+  // The pointer: tilt up to TILT.max degrees, eased with time constant TILT.tau s. The light job (bar 07's) turns the
+  // key's heading toward the pointer with the same lag; BIAS leans it near the card's centre.
+  const TILT = { max: 8, tau: 0.1 };
+  const BIAS = 0.12;
+
+  const card = fields.shape({
+    writes: ["height", "coverage", "ink", "slot", "direction"],
+    uniforms: {
+      uC: CARD.centre, uHalf: CARD.half, uCorner: CARD.corner, uLift: CARD.lift, uBevel: CARD.bevel,
+      uWin: CARD.win, uLine: CARD.line, uSun: CARD.sun, uWaves: CARD.waves,
+      uWarp: PAGE.warp, uFreq: PAGE.freq, uClear: PAGE.clear,
+    },
+    glsl: /* glsl */ `
+uniform vec2 uC, uHalf;
+uniform vec3 uWin; // not-colour: art window insets and height, ss
+uniform vec3 uWaves; // not-colour: wave amplitude, cycles per ss, spacing
+uniform float uCorner, uLift, uBevel, uLine, uSun, uWarp, uFreq, uClear;
+float boxSd(vec2 p, vec2 b, float r) { vec2 d = abs(p) - b + r; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r; }
+// The art window's centre and half size, about the card's centre.
+vec2 winC() { return vec2(0.0, uHalf.y - uWin.y - 0.5 * uWin.z); }
+vec2 winH() { return vec2(uHalf.x - uWin.x, 0.5 * uWin.z); }
+// The sunburst's centre: seeded, in the window's upper half, away from its sides.
+vec2 sunC() {
+  vec2 h = winH();
+  return winC() + vec2((hash11(uSeed + 3.0) - 0.5) * 1.0 * h.x, (0.2 + 0.4 * hash11(uSeed + 7.0)) * h.y);
+}
+// A printed line of width uLine at distance d from its centre line, anti-aliased over one sheet texel.
+float stroke(float d) {
+  float aa = 1.0 / min(uRes.x, uRes.y);
+  return 1.0 - smoothstep(0.5 * uLine - aa, 0.5 * uLine + aa, abs(d));
+}
+vec4 field(vec2 uv, vec2 q) {
+  vec2 p = q - uC;
+  float sd = boxSd(p, uHalf, uCorner);
+  if (sd > 0.0) {
+    // The page: a still warp (no clock), flat within uClear of the card so the card lies on a plane.
+    float w = uWarp * (0.5 + 0.5 * fbm(q * uFreq + uSeed * 1.7, 3)) * smoothstep(0.0, uClear, sd);
+    return vec4(w, 1.0, 0.0, 0.0);
+  }
+  float rim = smoothstep(-uBevel, 0.0, sd);
+  float h = uLift * (1.0 - rim * rim);
+  vec2 wc = winC();
+  vec2 wh = winH();
+  float sw = boxSd(p - wc, wh, 0.0);
+  // The window's printed frame, half on the paper and half on the foil.
+  float ink = stroke(sw);
+  if (sw > 0.0) return vec4(h, 1.0, ink, 1.0);
+  // Inside the window: foil, under the printed art.
+  vec2 s = sunC() - wc;
+  vec2 r = p - wc;
+  ink = max(ink, stroke(length(r - s) - uSun));
+  for (int k = 0; k < 3; k++) {
+    float y0 = -0.35 * wh.y - float(k) * uWaves.z;
+    float y = y0 + uWaves.x * sin(6.2831853 * uWaves.y * r.x + hash11(uSeed + 11.0 + float(k)) * 6.2831853);
+    ink = max(ink, stroke(r.y - y));
+  }
+  return vec4(h, 1.0, ink, 2.0);
+}
+// Sunburst grooves: along the ray from the burst's centre; none outside the window.
+vec2 fieldDir(vec2 uv, vec2 q) {
+  vec2 p = q - uC;
+  vec2 wc = winC();
+  if (boxSd(p, uHalf, uCorner) > 0.0 || boxSd(p - wc, winH(), 0.0) > 0.0) return vec2(0.0);
+  vec2 d = p - sunC();
+  float l = length(d);
+  return l > 1e-5 ? d / l : vec2(0.0, 1.0);
+}
+`,
+  });
+
+  // The key's direction for a pointer offset m from the card's centre (ss, x right, y up), as bar 07's light: the
+  // light comes from the cursor's side, its height above the page stays the key's.
+  const restH = Math.hypot(KEY.dir[0], KEY.dir[1]);
+  const keyDir = (m) => {
+    if (!m) return [...KEY.dir];
+    const hx = (KEY.dir[0] / restH) * BIAS + m[0];
+    const hy = (KEY.dir[1] / restH) * BIAS + m[1];
+    const len = Math.hypot(hx, hy) || 1;
+    return [(hx / len) * restH, (hy / len) * restH, KEY.dir[2]];
+  };
+  const lightsOf = (m) => [
+    lights.key({ dir: keyDir(m), level: KEY.level, shadow: { soft: KEY.soft } }),
+    lights.ambient(AMBIENT),
+  ];
+  const materialsOf = (look) => [
+    materials.paper({ tone: 0 }),
+    materials.paper({ tone: 0.25 }),
+    materials.foil({ spacing: FOIL.spacing, orders: FOIL.orders, roughness: FOIL.roughness, tone: FOIL.tone, pull: look.pull, pullTarget: look.target }),
+  ];
+  const tiltOf = (look) => ({ max: TILT.max, drive: look.job === "light" ? "none" : "pointer" });
+
+  const look = { ...LOOK };
+  const painter = paint(document.querySelector("canvas"), {
+    seed: 1, // ?seed= overrides it (the engine reads the URL)
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--card", "--accent-warm", "--accent-cool"] }),
+    fields: [card, fields.text()],
+    materials: materialsOf(look),
+    lights: lightsOf(null),
+    pointer: { ease: easeOfTau(TILT.tau) },
+    tilt: tiltOf(look),
+  });
+  window.painter = painter;
+
+  // Layout: the words sit in the title band and the text box under the window; the card's centre is where the
+  // light job measures the pointer from.
+  const head = document.querySelector(".card-head");
+  const box = document.querySelector(".card-box");
+  const view = { side: 1, cx: 0, cy: 0 };
+  // The words' sizes at a 600 px short side, and the type scale (the project's ui-policy.json) they step along.
+  const WORDS = { ".card-title": 20, ".card-no": 12, ".card-line": 14, ".card-foot": 12 };
+  const TYPE = [12, 13, 14, 16, 18, 20, 24, 32, 40, 48, 64];
+  const typeStep = (px) => TYPE.filter((s) => s <= px).pop() ?? TYPE[0];
+  function layout() {
+    const side = Math.min(innerWidth, innerHeight);
+    const toX = (x) => innerWidth / 2 + x * side;
+    const toY = (y) => innerHeight / 2 - y * side;
+    const [cx, cy] = CARD.centre;
+    const [hx, hy] = CARD.half;
+    const [side0, top0, tall] = CARD.win;
+    const place = (el, x0, x1, y0, y1) =>
+      Object.assign(el.style, { left: `${toX(x0)}px`, width: `${(x1 - x0) * side}px`, top: `${toY(y1)}px`, height: `${(y1 - y0) * side}px` });
+    place(head, cx - hx + side0, cx + hx - side0, cy + hy - top0 + CARD.line, cy + hy - CARD.head);
+    place(box, cx - hx + side0, cx + hx - side0, cy - hy + 0.03, cy + hy - top0 - tall - 0.02);
+    const u = side / 600;
+    for (const el of [head, box]) el.style.setProperty("--u", String(u));
+    for (const [sel, px] of Object.entries(WORDS)) document.querySelector(sel).style.fontSize = `${typeStep(px * u)}px`;
+    Object.assign(view, { side, cx: toX(cx), cy: toY(cy) });
+    window.__card = { x: view.cx, y: view.cy };
+  }
+  layout();
+  addEventListener("resize", layout);
+
+  // The light job's own motion: the key easing toward the pointer, as bar 07's. Only while the job includes the
+  // light (the paint call's job is both); with the tilt job the page never calls set. Until the pointer moves the page
+  // never calls set either, so the checks' own light changes stand.
+  // Under reduced motion the light goes straight to the pointer (no easing).
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  const st = { m: null, target: null };
+  let raf = 0;
+  let last = 0;
+  const drivesLight = () => look.job !== "tilt";
+  function tick(now) {
+    raf = 0;
+    if (!drivesLight() || !st.target) return;
+    const dt = last ? Math.min((now - last) / 1000, 1 / 30) : 1 / 60;
+    last = now;
+    const m = st.m ?? [0, 0];
+    const k = reduced.matches ? 1 : 1 - Math.exp(-dt / TILT.tau);
+    const next = [m[0] + (st.target[0] - m[0]) * k, m[1] + (st.target[1] - m[1]) * k];
+    const busy = Math.hypot(st.target[0] - next[0], st.target[1] - next[1]) > 1e-4;
+    st.m = busy ? next : [...st.target];
+    painter.set({ lights: lightsOf(st.m) });
+    if (busy) raf = requestAnimationFrame(tick);
+    else last = 0;
+  }
+  addEventListener("pointermove", (e) => {
+    st.target = [(e.clientX - view.cx) / view.side, (view.cy - e.clientY) / view.side];
+    if (drivesLight() && !raf) raf = requestAnimationFrame(tick);
+  });
+</script>
+</body>
+</html>

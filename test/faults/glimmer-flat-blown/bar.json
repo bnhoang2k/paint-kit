@@ -1,0 +1,36 @@
+{
+  "id": "glimmer-flat-blown",
+  "reference": {
+    "shelfKey": "none",
+    "title": "planted fault, not a bar"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": [
+      "--accent",
+      "--accent-2",
+      "--accent-3"
+    ]
+  },
+  "detail": 0.6,
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "laws": [
+    "transmit"
+  ],
+  "alive": {
+    "t0": 1,
+    "t1": 3
+  },
+  "text": {
+    "always": [
+      "#name"
+    ],
+    "lit": []
+  },
+  "beats": []
+}

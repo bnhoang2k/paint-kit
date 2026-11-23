@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper shred</title>
+<!-- Bar 04, paper shred (from Shader, shader.se; study.md). A sheet of paper under a key light. Scroll moves a cut
+     line up the paper; below it the paper hangs as strips about 17.5 px wide, each curled across its width, over the
+     dark section. More scroll sends a wave down the strips, then their ends rise, ragged, and the strips lift away.
+     The header band stays. Every number in STUDY comes from study.md (Source: frames); notes.md says why for each of
+     the rest. The strips are one bar-local shape field (`strips()`): coverage-1 paper whose gaps and the revealed
+     section print in the ink token, a curl per strip in height, the strip angle in the direction image, and each
+     strip's rest position (where its paper sat on the flat sheet before it swayed and lifted), so the paper's fibres,
+     its warp and the printed reading ride their strip. Scroll and time reach it only as uniforms, so nothing
+     recompiles or re-uploads while you scroll.
+     `window.painter` is the painter; `window.shredAt(s)` gives the strip state at s window heights of scroll. -->
+<style>
+  :root {
+    --ground: oklch(0.94 0.028 88);
+    --ink: oklch(0.25 0.1 272);
+    --accent: oklch(0.7 0.09 70);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.36 0.03 272);
+      --ink: oklch(0.92 0.03 88);
+      --accent: oklch(0.6 0.08 70);
+    }
+  }
+  html, body { margin: 0; background: var(--ground); color: var(--ink); }
+  /* The scroll the shred runs on: one window for the page plus the three beats (STUDY.climb + wave + lift, 3.15
+     window heights), so the last beat ends at the bottom of the scroll. */
+  body { height: 415vh; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* The header band (STUDY.head px): uncut paper with the wordmark printed on it. */
+  header {
+    position: fixed; left: 0; right: 0; top: 0; height: 64px; box-sizing: border-box; padding: 0 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; pointer-events: none;
+  }
+  #wordmark { margin: 0; font: italic 700 22px/1.2 Georgia, "Times New Roman", serif; letter-spacing: 0.01em; }
+  /* The reading printed on the paper, below the header: the cut climbs past it, so its words shred, sway and lift
+     with their strips (the engine prints them at each strip's rest position). It stays above the rest cut (0.85). */
+  #print {
+    position: fixed; left: 24px; right: 24px; top: 22%; max-width: 34em; margin: 0 auto; pointer-events: none;
+  }
+  #heading { margin: 0 0 12px; font: 700 clamp(26px, 4.4vw, 38px)/1.15 Georgia, "Times New Roman", serif; }
+  #reading { margin: 0; font: 400 17px/1.5 Georgia, "Times New Roman", serif; }
+  /* The dark section's line: shown only once the strips have lifted off it (opacity set from the scroll). It is
+     the ground token on the ink-printed section; without WebGL the page is the ground, so it takes the ink. */
+  #section {
+    position: fixed; left: 24px; right: 24px; top: 46%; margin: 0; text-align: center; color: var(--ground);
+    opacity: 0; visibility: hidden; pointer-events: none;
+  }
+  #section h2 { margin: 0 0 8px; font: 700 clamp(28px, 5vw, 44px)/1.15 Georgia, "Times New Roman", serif; }
+  #section p { margin: 0; font: 400 16px/1.4 Georgia, "Times New Roman", serif; }
+  :root[data-paint="fallback"] #section { color: var(--ink); }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<header>
+  <p id="wordmark" data-paint-ink data-ui-paint-text>Shredded</p>
+</header>
+<main id="print">
+  <h1 id="heading" data-paint-ink data-ui-paint-text>A long page of reading</h1>
+  <p id="reading" data-paint-ink data-ui-paint-text>It goes on about paper: the fibres pressed into a sheet, the pulp
+    that gives it tooth, and the way a page takes ink and keeps it long after the reader has moved on.</p>
+</main>
+<div id="section">
+  <h2 data-ui-paint-text>Had enough reading?</h2>
+  <p data-ui-paint-text>Scroll back up to tape it together.</p>
+</div>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // From study.md (Source: frames, the 1440 x 900 capture at 1.667 px of wheel per ms). Lengths in CSS px, scroll in
+  // window heights.
+  const STUDY = {
+    pitch: 17.5, // strip width: row autocorrelation 17, 18, 18 px (frame 79)
+    gap: 3, // dark gap between strips: median dark run 3 px (frame 79)
+    start: 0.85, // the cut line enters 0.85 of the window height down (frame 73, shred-down.jpg)
+    wave: 0.4, // sway wavelength as a fraction of the window height: half-wave lag 122 to 220 px, frames 78 to 80
+    ampRest: 1.9, // sway amplitude where the wave beat starts (frame 78)
+    ampWave: 5.4, // at the end of the wave beat (frame 80)
+    ampLift: 7, // across the width while the ends rise (4 to 10 px, mean 7, frames 81 to 83)
+    rag: 0.13, // ragged strip ends: spread 0.13 of the window height (frames 81 to 83)
+    climb: 0.74, // the cut climbs to the header over 0.4 s of wheel = 0.74 window heights
+    waveSpan: 0.74, // the wave grows over the next 0.4 s = 0.74 window heights
+    lift: 1.67, // the ends rise and leave over 0.9 s = 1.67 window heights
+  };
+  // Page design (notes.md has the why for each).
+  const DESIGN = {
+    head: 64, // the header band, CSS px: the cut stops at its lower edge
+    curl: 4, // crown height of a strip's curl, CSS px (0.5 to 1 x per strip, seeded)
+    twist: 1.6, // one edge rising over the other along the strip, CSS px
+    drop: 3, // the gaps and the revealed section sit this far below the paper, CSS px
+    crease: 1.2, // the raised crease along the cut line, CSS px
+    liftCurl: 6, // a lifting strip's end curls toward the viewer, CSS px
+    pin: 0.35, // the sway grows from 0 at the cut to full over this fraction of the window height
+    fade: 48, // the section's line fades in over this many px of strip-end rise once the strips clear it
+    idle: 3.0, // Not from the reference: the slow sway period at rest, seconds (study.md; a Task 19 question)
+  };
+
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  const mix = (a, b, k) => a + (b - a) * k;
+
+  // The strip state at s window heights of scroll, for a window of h CSS px. It depends on the scroll alone; time
+  // only moves the sway's phase in the shader, so setTime(t) and a live frame at t draw the same strips.
+  function shredAt(s, h) {
+    const c = clamp01(s / STUDY.climb);
+    const w = clamp01((s - STUDY.climb) / STUDY.waveSpan);
+    const l = clamp01((s - STUDY.climb - STUDY.waveSpan) / STUDY.lift);
+    const rag = STUDY.rag * h;
+    // Ends start just below the window and finish a full ragged spread above the header, so every strip has gone.
+    // The reference's ends rise slowly first and then fast (118 px in the first 0.2 s, the rest in 0.7 s): ease in.
+    const le = l ** 1.5;
+    const end = mix(h + 2, DESIGN.head - rag - 2, le);
+    return {
+      uCut: mix(STUDY.start * h, DESIGN.head, c),
+      uAmp: STUDY.ampRest + (STUDY.ampWave - STUDY.ampRest) * w + (STUDY.ampLift - STUDY.ampWave) * l,
+      uEnd: end,
+      uRag: rag,
+      uLift: l,
+      // How far the strips have been pulled up: their ends start at h + 2, so this is 0 until the ends rise. Each
+      // strip's paper slides up by it (the rest position adds it back), so the fibres and words rise with the strip.
+      uRise: h + 2 - end,
+      // The wave runs down the strips as you scroll: one wavelength per wavelength of scroll.
+      uScroll: (s * h) / (STUDY.wave * h) * 6.2831853,
+    };
+  }
+
+  const GLSL = /* glsl */ `
+uniform float uCssW, uCssH, uCut, uAmp, uEnd, uRag, uLift, uScroll, uRise;
+uniform float uPitch, uGap, uWave, uHead, uCurl, uTwist, uDrop, uCrease, uLiftCurl, uPin, uIdle;
+const float TAU = 6.2831853;
+// CSS px, y down from the top.
+vec2 cssAt(vec2 uv) { return vec2(uv.x * uCssW, (1.0 - uv.y) * uCssH); }
+// How far the strip hangs free: 0 at the cut, 1 from uPin window heights below it.
+float freeAt(float y) { return smoothstep(0.0, uPin * uCssH, y - uCut); }
+// The sway's phase: a wave down the strips, moved by time (slowly) and by scroll; a slow drift across x so the
+// strips do not move as one sheet.
+float phaseAt(vec2 p) { return TAU * p.y / (uWave * uCssH) - TAU * uTime / uIdle - uScroll + p.x * 0.004; }
+float swayAt(vec2 p) { return uAmp * freeAt(p.y) * sin(phaseAt(p)); }
+// Which strip a point is on, and where across it (0..1), after the sway.
+vec2 stripAt(vec2 p) {
+  float xs = (p.x - swayAt(p)) / uPitch;
+  return vec2(floor(xs), fract(xs));
+}
+float rnd(float i, float k) { return hash11(i * 1.731 + k * 13.37 + uSeed * 0.917); }
+
+vec4 field(vec2 uv, vec2 q) {
+  vec2 p = cssAt(uv);
+  float toUnits = 1.0 / min(uCssW, uCssH);
+  // The crease along the cut line (only once the cut is below the header).
+  float crease = uCrease * exp(-pow((p.y - uCut) / 3.0, 2.0)) * step(uHead + 1.0, uCut);
+  if (p.y < uCut) return vec4(crease * toUnits, 1.0, 0.0, 0.0);
+  vec2 st = stripAt(p);
+  float i = st.x, u = st.y;
+  // Strip or gap: the gap is uGap wide, split over both edges, with a 1 px soft edge.
+  float edge = min(u, 1.0 - u) * uPitch;
+  float body = smoothstep(uGap * 0.5 - 0.5, uGap * 0.5 + 0.5, edge);
+  // Its end: ragged strip by strip.
+  float end = uEnd + rnd(i, 1.0) * uRag;
+  body *= 1.0 - smoothstep(end - 1.0, end + 1.0, p.y);
+  // Its curl: a crown across the width, 0.5 to 1 x uCurl per strip, with one edge rising over the other along it.
+  float a = (u - 0.5) * 2.0;
+  float crown = uCurl * mix(0.5, 1.0, rnd(i, 2.0)) * (1.0 - a * a);
+  // (along the strip's own length, so the twist rises with the strip)
+  float twist = uTwist * a * sin((p.y + uRise) / 140.0 + rnd(i, 3.0) * TAU);
+  // A lifting strip's end curls toward the viewer.
+  float lift = uLiftCurl * uLift * smoothstep(end - 140.0, end, p.y);
+  float h = mix(-uDrop, crown + twist + lift, body) + crease;
+  // The gaps and the revealed section print in ink.
+  return vec4(h * toUnits, 1.0, 1.0 - body, 0.0);
+}
+// Where the paper now at uv sat on the flat sheet (its rest position): undo the sway (the strip moved right by
+// swayAt) and the rise (the strip was pulled up by uRise px, so the paper showing here sat lower). Above the cut the
+// sheet is at rest, and so is the revealed section below the strip ends. The side gaps carry their strip's rest: they
+// print in ink, so their own texture riding the strip cannot be seen, and a rest that jumped by uRise at each gap edge
+// would break the gap lines into dashes while the strips lift.
+vec2 fieldRest(vec2 uv, vec2 q) {
+  vec2 p = cssAt(uv);
+  if (p.y < uCut) return uv;
+  vec2 st = stripAt(p);
+  if (p.y > uEnd + rnd(st.x, 1.0) * uRag) return uv;
+  vec2 r = vec2(p.x - swayAt(p), p.y + uRise);
+  return vec2(r.x / uCssW, 1.0 - r.y / uCssH);
+}
+// The strip's angle: along the swaying strip (x right, y up). None off the strips.
+vec2 fieldDir(vec2 uv, vec2 q) {
+  vec2 p = cssAt(uv);
+  if (p.y < uCut) return vec2(0.0);
+  vec2 st = stripAt(p);
+  if (min(st.y, 1.0 - st.y) * uPitch < uGap * 0.5) return vec2(0.0);
+  float dsdy = uAmp * freeAt(p.y) * cos(phaseAt(p)) * TAU / (uWave * uCssH);
+  return normalize(vec2(-dsdy, 1.0));
+}
+`;
+
+  // The strips as one field: fields.shape with uniforms the page sets before each draw (scroll and window size).
+  // A scroll asks the engine for one redraw, so the strips follow the scroll at rest and under reduced motion too.
+  function strips() {
+    const U = {
+      uCssW: 1, uCssH: 1, uCut: 0, uAmp: 0, uEnd: 0, uRag: 0, uLift: 0, uScroll: 0, uRise: 0,
+      uPitch: STUDY.pitch, uGap: STUDY.gap, uWave: STUDY.wave, uHead: DESIGN.head, uCurl: DESIGN.curl,
+      uTwist: DESIGN.twist, uDrop: DESIGN.drop, uCrease: DESIGN.crease, uLiftCurl: DESIGN.liftCurl, uPin: DESIGN.pin,
+      uIdle: DESIGN.idle,
+    };
+    const base = fields.shape({ writes: ["height", "coverage", "ink", "direction", "rest"], uniforms: U, glsl: GLSL });
+    return {
+      kind: base.kind,
+      writes: base.writes,
+      init(gl, ctx) {
+        const rt = base.init(gl, ctx);
+        const onScroll = () => ctx.invalidate();
+        addEventListener("scroll", onScroll, { passive: true });
+        // The engine draws every rest pass before any main pass, so both passes set this frame's scroll and size
+        // themselves; otherwise the rest pass would read last frame's scroll and the texture would trail its strip.
+        const sync = () => {
+          const w = ctx.size.w / ctx.size.dpr, h = ctx.size.h / ctx.size.dpr;
+          Object.assign(U, shredAt(scrollY / Math.max(1, innerHeight), h), { uCssW: w, uCssH: h });
+        };
+        return {
+          stateful: false,
+          drawRest(sheet, t, dt) {
+            sync();
+            rt.drawRest(sheet, t, dt);
+          },
+          draw(sheet, t, dt) {
+            sync();
+            rt.draw(sheet, t, dt);
+          },
+          resize: (w, h) => rt.resize(w, h),
+          dispose() {
+            removeEventListener("scroll", onScroll);
+            rt.dispose();
+          },
+        };
+      },
+    };
+  }
+
+  // The section's line shows once the strips have lifted off it: it fades in over DESIGN.fade px as the lowest
+  // strip end (the end plus the full ragged spread) rises past the line's top, so no strip ever covers it.
+  const section = document.getElementById("section");
+  const showSection = () => {
+    const s = shredAt(scrollY / Math.max(1, innerHeight), innerHeight);
+    const k = clamp01((section.getBoundingClientRect().top - (s.uEnd + s.uRag)) / DESIGN.fade);
+    section.style.opacity = String(k);
+    section.style.visibility = k > 0 ? "visible" : "hidden";
+  };
+  addEventListener("scroll", showSection, { passive: true });
+  addEventListener("resize", showSection);
+  showSection();
+
+  window.shredAt = shredAt;
+  window.painter = paint(document.querySelector("canvas"), {
+    seed: 1, // ?seed= overrides it (the engine reads the URL)
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.45 }), strips(), fields.text()],
+    materials: [materials.paper()],
+    lights: [lights.key({ dir: [-0.7, 0.6, 0.4], level: 0.85 }), lights.ambient(0.15)],
+  });
+</script>
+</body>
+</html>

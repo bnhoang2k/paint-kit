@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit blend rule</title>
+<!-- The sheet's blend rule, in field order, with known values per quadrant (uv y is up, so uv.y > 0.5 is the top):
+     A writes height 0.01, coverage 1 left / 0.3 right, ink 0.4 left / 0 right.
+     B writes height 0.005, coverage 1 top / 0 bottom, ink 0.7 top / 0.2 bottom, slot 2.
+     C writes height 0.002, ink 0 and slot 3 on the left half only; it discards the right half, so there its
+     layer must be the engine's cleared "no effect" layer, not B's.
+     `window.painter` is this page's painter, for tests that call `set`. -->
+<style>
+  :root { --ground: oklch(0.9 0.02 90); --ink: oklch(0.3 0.03 90); }
+  html, body { margin: 0; height: 100%; background: var(--ground); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  window.painter = paint(document.querySelector("canvas"), {
+    seed: 1,
+    palette: fromPage({ ground: "--ground", ink: "--ink" }),
+    fields: [
+      fields.shape({
+        writes: ["height", "coverage", "ink"],
+        glsl: `vec4 field(vec2 uv, vec2 q) { return uv.x < 0.5 ? vec4(0.01, 1.0, 0.4, 0.0) : vec4(0.01, 0.3, 0.0, 0.0); }`,
+      }),
+      fields.shape({
+        writes: ["height", "coverage", "ink", "slot"],
+        glsl: `vec4 field(vec2 uv, vec2 q) { return uv.y > 0.5 ? vec4(0.005, 1.0, 0.7, 2.0) : vec4(0.005, 0.0, 0.2, 2.0); }`,
+      }),
+      fields.shape({
+        writes: ["height", "ink", "slot"],
+        glsl: `vec4 field(vec2 uv, vec2 q) { if (uv.x > 0.5) discard; return vec4(0.002, 1.0, 0.0, 3.0); }`,
+      }),
+    ],
+    materials: [materials.matte()],
+    lights: [lights.key({ dir: [-0.7, 0.6, 0.6], level: 0.85 }), lights.ambient(0.15)],
+  });
+</script>
+</body>
+</html>

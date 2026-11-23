@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit halftone caption</title>
+<!-- The halftone caption page (check-fix (f) fix round 1): test/pages/halftone.html with one change, a small ink
+     caption printed by the text field over the halftone picture's pale top-left corner, so halftone dots sit
+     behind text. text-contrast applies; its range floor reads the frame with the text ink off and the picture ink
+     on (the dots are paint), and the caption's glyphs are scored against the dots around them. -->
+<style>
+  :root {
+    --ground: oklch(0.94 0.02 85);
+    --ink: oklch(0.25 0.04 255);
+    --accent: oklch(0.62 0.13 40);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.25 0.02 255);
+      --ink: oklch(0.92 0.025 85);
+      --accent: oklch(0.7 0.12 40);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .caption { position: relative; margin: 0; padding: 24px 28px; font: 600 26px/1.2 Georgia, "Times New Roman", serif; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<p class="caption" data-paint-ink>Fig. 1: a sphere in one ink</p>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const CELL = 16; // CSS px
+  const ANGLE = 45; // degrees: the classic single-ink screen
+  // Under pi / 4 (0.785): at grow pi / 4 a full-tone dot reaches half its cell and touches its neighbours, and
+  // test/pages/halftone.test.ts counts dots as separate blobs. Was 0.8 (Task 8), just over.
+  const GROW = 0.75;
+
+  // The picture, drawn from shapes in the page's tokens. Its luminance is the halftone's tone.
+  // The engine calls it with the palette as CSS colours (fields.halftone's source); page code never reads the tokens.
+  function picture({ ground: a, ink: b, stops }) {
+    const accent = stops[2];
+    // Tone is darkness (big dots where the picture is dark). Drawn in the page's own ground and ink, the picture
+    // would turn negative in dark mode, where ink is the light token: the background would fill with big dots.
+    // So the lighter token is always the picture's paper and the darker its print: in both schemes the page's
+    // ground shows between small dots, and the shapes print as big dots in the ink colour.
+    const lum = (colour) => {
+      const p = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      p.fillStyle = colour;
+      p.fillRect(0, 0, 1, 1);
+      const [r, g, b] = p.getImageData(0, 0, 1, 1).data;
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const [ground, ink] = lum(a) >= lum(b) ? [a, b] : [b, a];
+    const c = document.createElement("canvas");
+    c.width = 480;
+    c.height = 300;
+    const g = c.getContext("2d");
+    // A ground graded from paper at the top to a mid tone at the foot.
+    const sky = g.createLinearGradient(0, 0, 0, c.height);
+    sky.addColorStop(0, ground);
+    sky.addColorStop(1, accent);
+    g.fillStyle = sky;
+    g.fillRect(0, 0, c.width, c.height);
+    // A band across the lower third, half strength.
+    g.globalAlpha = 0.45;
+    g.fillStyle = ink;
+    g.fillRect(0, 205, c.width, 40);
+    g.globalAlpha = 1;
+    // A sphere lit from the upper left: paper at its highlight, ink at its shadow side.
+    const ball = g.createRadialGradient(205, 120, 8, 240, 150, 105);
+    ball.addColorStop(0, ground);
+    ball.addColorStop(1, ink);
+    g.fillStyle = ball;
+    g.beginPath();
+    g.arc(240, 150, 95, 0, Math.PI * 2);
+    g.fill();
+    // A small disc at three-quarter strength.
+    g.globalAlpha = 0.75;
+    g.fillStyle = ink;
+    g.beginPath();
+    g.arc(395, 75, 30, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = 1;
+    return c;
+  }
+
+  const source = picture;
+  let ht = { cell: CELL, grow: GROW };
+  const fieldsFor = () => [fields.sheet({ warp: 0.45 }), fields.halftone({ source, cell: ht.cell, angle: ANGLE, grow: ht.grow }), fields.text()];
+
+  window.painter = paint(document.querySelector("canvas"), {
+    seed: 1,
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: fieldsFor(),
+    materials: [materials.paper()],
+    // Bar 03's paper (sheet warp 0.45, in fieldsFor) and light (bars/03-halftone-resolve/index.html), copied, not
+    // tuned (Phase 2 Task 8): at warp 0.3 under a steep key (z 0.7) and ambient 0.35 the macro relief read 0.0041
+    // (light) at detail 0, under relight.reliefDiff, and the page passed relight only through the paper's
+    // dial-scaled fibres.
+    lights: [lights.key({ dir: [-0.7, 0.6, 0.4], level: 0.85 }), lights.ambient(0.15)],
+  });
+  // The halftone's settings now, read only: test/pages/halftone.test.ts pins grow under pi / 4 for blob counting.
+  window.halftoneNow = () => ({ ...ht });
+  window.setHalftone = (p) => {
+    ht = { ...ht, ...p };
+    window.painter.set({ fields: fieldsFor() });
+  };
+</script>
+</body>
+</html>

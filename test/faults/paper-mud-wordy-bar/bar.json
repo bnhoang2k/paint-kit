@@ -1,0 +1,31 @@
+{
+  "id": "paper-mud-wordy-bar",
+  "reference": {
+    "shelfKey": "none",
+    "title": "planted fault, not a bar"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": [
+      "--accent"
+    ]
+  },
+  "detail": 0.6,
+  "seeds": [
+    1
+  ],
+  "laws": [
+    "relief"
+  ],
+  "alive": {
+    "rests": "still"
+  },
+  "beats": [],
+  "text": {
+    "always": [
+      "h1"
+    ],
+    "lit": []
+  }
+}

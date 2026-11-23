@@ -1,0 +1,19 @@
+{
+  "id": "04-paper-shred",
+  "reference": {
+    "shelfKey": "shader.se",
+    "title": "Shader Paper Shred Scroll Parallax Interaction"
+  },
+  "palette": { "ground": "--ground", "ink": "--ink", "accents": ["--accent"] },
+  "detail": 0.6,
+  "seeds": [1, 2, 3],
+  "laws": ["relief"],
+  "alive": { "t0": 1, "t1": 3 },
+  "text": { "always": ["#wordmark", "#heading", "#reading"], "lit": [] },
+  "beats": [
+    "At rest a cut line sits 0.85 of the way down the paper; below it the paper hangs as strips about 17.5 px wide over the dark section, each curled so the light finds its crown, swaying slowly",
+    "Scrolling moves the cut line up the paper to the header; everything below it hangs as strips",
+    "Further scroll makes a wave run down the strips, growing with the scroll",
+    "Then the strip ends rise, ragged strip by strip, and the strips lift away to reveal the dark section and its line; the header stays"
+  ]
+}

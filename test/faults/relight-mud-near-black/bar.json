@@ -1,0 +1,29 @@
+{
+  "id": "relight-mud-near-black",
+  "reference": {
+    "shelfKey": "planted-fault",
+    "title": "relight-mud-near-black planted fault"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": [
+      "--accent"
+    ]
+  },
+  "detail": 0.6,
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "laws": [
+    "relief"
+  ],
+  "alive": {
+    "rests": "planted fault: only relight's relief law is asserted"
+  },
+  "beats": [
+    "planted fault"
+  ]
+}

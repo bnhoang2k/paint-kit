@@ -1,0 +1,40 @@
+{
+  "id": "relight-dark-02-denim-zip",
+  "reference": {
+    "shelfKey": "planted-fault",
+    "title": "relight-dark-02-denim-zip planted fault"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": [
+      "--accent"
+    ]
+  },
+  "detail": 0.6,
+  "view": {
+    "width": 393,
+    "height": 852
+  },
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "laws": [
+    "relief",
+    "highlight"
+  ],
+  "alive": {
+    "rests": "rests until the pull is dragged; motion-kit's bar 13 gate covers the drag"
+  },
+  "text": {
+    "always": [
+      "#status .time"
+    ],
+    "lit": []
+  },
+  "beats": [
+    "planted fault"
+  ]
+}

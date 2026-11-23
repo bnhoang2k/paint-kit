@@ -1,0 +1,17 @@
+{
+  "id": "linen-card",
+  "reference": {
+    "shelfKey": "none",
+    "title": "No reference: the request \"a linen card under a desk lamp\"; mechanism copied from bar 01-lamp-on-paper"
+  },
+  "palette": { "ground": "--ground", "ink": "--ink", "accents": [] },
+  "detail": 0.6,
+  "seeds": [1, 2, 3],
+  "laws": ["relief", "falloff"],
+  "alive": { "t0": 1, "t1": 3 },
+  "text": { "always": [], "lit": ["#note"] },
+  "beats": [
+    "Evening: a linen card lies on the desk, and a desk lamp over its top-left corner throws a warm pool across it; the card's weave and cut edge catch the light, the desk beyond sinks into the dim room",
+    "The lamp turns to aim where the pointer is, staying on the card; the printed note reads inside the pool"
+  ]
+}

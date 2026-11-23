@@ -1,0 +1,21 @@
+{
+  "id": "05-pool-light",
+  "reference": {
+    "shelfKey": "60fps.design/shots/pool-importing-screenshots-animation",
+    "title": "Pool Importing Screenshots Animation"
+  },
+  "palette": { "ground": "--ground", "ink": "--ink", "accents": ["--accent"] },
+  "detail": 0.5,
+  "view": { "width": 393, "height": 852 },
+  "seeds": [1, 2, 3],
+  "laws": ["caustic"],
+  "alive": { "t0": 10, "t1": 11.6 },
+  "settle": 10,
+  "text": { "always": [".title"], "lit": [] },
+  "beats": [
+    "One pool of water over the whole page: a caustic net of thin bright lines that re-forms as the surface moves, over an even floor",
+    "2.2 s: the card's top edge reaches the bottom of the page; it climbs at 0.089 short sides per second, steadily, and leaves at the top before the next climb",
+    "As it climbs the card comes up off the floor, so its outline wobbles with the same refraction that bends the caustic lines, and the lines on its face go soft, as streaks",
+    "The card's print (its panel, chips and text lines) travels with the card and bends with the water"
+  ]
+}

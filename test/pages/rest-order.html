@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit rest order</title>
+<!-- The draw-order test page for rest writers: slot and direction go to the last writer in list order, whether or
+     not that writer also writes "rest". Field R writes direction right (1, 0), slot 0 and "rest" (offset 0); field D
+     writes direction up (0, 1) and slot 1. `?order=RD` lists R first (D must win), `?order=DR` lists D first (R must
+     win). Only the rest pass is drawn ahead of the list. test/pages/carry.test.ts reads the sheet's centre pixel. -->
+<style>
+  :root { --ground: oklch(0.93 0.02 85); --ink: oklch(0.26 0.05 260); --accent: oklch(0.6 0.1 240); }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const order = new URLSearchParams(location.search).get("order") ?? "RD";
+  if (order !== "RD" && order !== "DR") throw new Error(`rest-order: ?order= is RD or DR, got "${order}"`);
+  const R = fields.shape({
+    writes: ["slot", "direction", "rest"],
+    glsl: /* glsl */ `
+vec4 field(vec2 uv, vec2 q) { return vec4(0.0, 1.0, 0.0, 0.0); }
+vec2 fieldDir(vec2 uv, vec2 q) { return vec2(1.0, 0.0); }
+vec2 fieldRest(vec2 uv, vec2 q) { return uv; }
+`,
+  });
+  const D = fields.shape({
+    writes: ["slot", "direction"],
+    glsl: /* glsl */ `
+vec4 field(vec2 uv, vec2 q) { return vec4(0.0, 1.0, 0.0, 1.0); }
+vec2 fieldDir(vec2 uv, vec2 q) { return vec2(0.0, 1.0); }
+`,
+  });
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    detail: 1,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: order === "RD" ? [R, D] : [D, R],
+    materials: [materials.matte(), materials.matte()],
+    lights: [lights.ambient(1)],
+  });
+</script>
+</body>
+</html>

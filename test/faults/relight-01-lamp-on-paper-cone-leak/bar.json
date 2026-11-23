@@ -1,0 +1,18 @@
+{
+  "id": "relight-01-lamp-on-paper-cone-leak",
+  "reference": {
+    "shelfKey": "60fps.design/shots/platen-typewriter-intro-how-to-interaction",
+    "title": "Platen Typewriter Intro How to Interaction"
+  },
+  "palette": { "ground": "--ground", "ink": "--ink", "accents": ["--accent"] },
+  "detail": 0.6,
+  "seeds": [1, 2, 3],
+  "laws": ["relief", "falloff"],
+  "alive": { "t0": 1, "t1": 3 },
+  "text": { "always": ["#hold-hint", "#mode-label"], "lit": ["#typed"] },
+  "beats": [
+    "Opens at night: the paper is dark and the lamp on the rail throws a warm cone up the page; typed words inside the cone read, words outside it sink into the dark",
+    "The lamp follows the pointer along the rail, and its cone decides which typed words you can read",
+    "Holding either side of the lamp's capsule switches to day: the cone goes out and the paper brightens (0.4 s); holding again dims to night (0.4 s) and the cone grows back (0.5 s)"
+  ]
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+out/
+.DS_Store
+__pycache__/
+.venv/
+
+# Smoke-test sheets are large renders; re-render with paint-kit sheet
+test/smoke/*/sheet.png
+
+# Bar sheets are large renders; re-render with paint-kit sheet bars/<name> --out bars/<name>/sheet.png
+bars/*/sheet.png

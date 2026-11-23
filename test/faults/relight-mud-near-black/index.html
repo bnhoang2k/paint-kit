@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit fault relight-mud-near-black</title>
+<!-- PLANTED FAULT (relight-mud-near-black: mud on a near-black ground). A copy of test/faults/paper-mud/index.html
+     (the lamp dimmed to 0.1 of its level, the ambient raised to 0.95) with exactly one more change: the dark ground
+     token is OKLCH lightness 0.12 (paper-mud's is 0.26), the darkest a page might choose. On that ground the relief
+     law's relative change reads about 0.0167 in dark (brightness 0.049), above relight.reliefDiff, while the raw
+     change is about 0.0008. Phase 2 Task 2b: the dark half must fail relief by relight.reliefRawFloor at every seed;
+     test/pages/relight.test.ts asserts it. -->
+<style>
+  :root {
+    --ground: oklch(0.94 0.015 85);
+    --ink: oklch(0.24 0.03 260);
+    --accent: oklch(0.68 0.12 60);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.12 0.015 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent: oklch(0.74 0.11 60);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  main { position: relative; max-width: 34rem; padding: 40px 32px; }
+  h1 { margin: 0 0 20px; font: 600 40px/1.15 Georgia, "Times New Roman", serif; letter-spacing: -0.01em; }
+  p { margin: 0; font: 400 19px/1.55 Georgia, "Times New Roman", serif; letter-spacing: 0.01em; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<main>
+  <h1 data-paint-ink data-paint-text="always">Night shift notes</h1>
+  <p data-paint-ink data-paint-text="lit">The lamp on the rail decides what you can read. Words inside its pool sit
+    sharp and black in the paper's fibres; words outside it sink back into the dark sheet until the light
+    slides over them again. Move the lamp and the page reads differently.</p>
+</main>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.35 }), fields.text()],
+    materials: [materials.paper()],
+    lights: [
+      lights.lamp({ at: [0.2, -0.05, 0.8], aim: [0.22, 0.3, 0], cone: 22, soft: 8, level: 0.115, kelvin: 2900 }),
+      lights.ambient(0.95),
+    ],
+  });
+</script>
+</body>
+</html>

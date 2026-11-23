@@ -1,0 +1,38 @@
+{
+  "id": "banding-grain-04-paper-shred",
+  "reference": {
+    "shelfKey": "planted-fault",
+    "title": "banding-grain-04-paper-shred planted fault"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": [
+      "--accent"
+    ]
+  },
+  "detail": 0.6,
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "laws": [
+    "relief"
+  ],
+  "alive": {
+    "t0": 1,
+    "t1": 3
+  },
+  "text": {
+    "always": [
+      "#wordmark",
+      "#heading",
+      "#reading"
+    ],
+    "lit": []
+  },
+  "beats": [
+    "planted fault"
+  ]
+}

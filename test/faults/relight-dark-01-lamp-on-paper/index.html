@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en" data-mode="night">
+<head>
+<!-- PLANTED FAULT (relight-dark-01-lamp-on-paper: the sheet has no macro relief (warp 0) under prefers-color-scheme: dark only, so in dark the lamp has nothing to shade). A copy of bars/01-lamp-on-paper/index.html with one planted fault; test/pages/faults.test.ts asserts that it fails relight at every seed in its bar.json, with a line that names dark first. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lamp on paper</title>
+<!-- Bar 01, lamp on paper (from Platen; study.md). A paper sheet with typed words drawn into its ink, a lamp on a
+     rail near the bottom aimed up the page, and the room light (ambient). Night is the room light turned down with
+     the lamp on; day is the room light up with the lamp out. The palette never changes between them: night is
+     light, not a theme. The lamp follows the pointer along the rail; a hold on its capsule switches day and night.
+     Light 0 is the lamp (relight's falloff and relief laws use it), light 1 the ambient. bar.json names the text:
+     #typed is lit (the lamp decides whether it reads), #hold-hint and #mode-label always read. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.012 85);
+    --ink: oklch(0.23 0.02 260);
+    --accent: oklch(0.76 0.13 70);
+    /* Screen text over the paint at night: the paper's own light colour on the darkened sheet. */
+    --night-text: var(--ground);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.27 0.012 260);
+      --ink: oklch(0.91 0.02 85);
+      --accent: oklch(0.8 0.12 70);
+      --night-text: var(--ink);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .stage { position: fixed; inset: 0; }
+
+  /* Screen text: the instruction and the mode. Plain HTML, never in the sheet: it does not take the lamp's light. */
+  .hud { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; gap: 24px;
+    padding: clamp(10px, 3.5vmin, 22px) clamp(14px, 4.5vmin, 28px); font: 500 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: 0.01em; }
+  /* Screen text sits on the lint scale (12, 13, 14): the old 2.5vmin ramp, snapped to steps at the same vmin. */
+  @media (min-width: 520px) and (min-height: 520px) { .hud { font-size: 13px; } }
+  @media (min-width: 560px) and (min-height: 560px) { .hud { font-size: 14px; } }
+  .hud p { margin: 0; color: var(--ink); transition: color 0.4s; }
+  #hold-hint { max-width: 20em; }
+  /* At night, with the paint running (not the no-WebGL fallback, which shows the ground), screen text goes light. */
+  :root[data-mode="night"]:not([data-paint="fallback"]) .hud p { color: var(--night-text); }
+
+  /* Typed words: drawn into the sheet's ink, so the lamp's light falls on them. Two halves flush to a narrow
+     gutter: the lamp at rest lights both inner edges, and the paper on its own axis stays bare. */
+  #typed { position: absolute; left: 0; right: 0; bottom: 28%; margin: 0 auto; width: min(46rem, 90vw);
+    display: flex; justify-content: center; gap: 10vmin; white-space: nowrap;
+    font: 700 12px/1.6 "Courier New", Courier, monospace; letter-spacing: 0.02em; }
+  /* The typed words sit on the lint scale: the old 3vmin ramp, snapped to steps at the same vmin. */
+  @media (min-width: 467px) and (min-height: 467px) { #typed { font-size: 14px; } }
+  @media (min-width: 533px) and (min-height: 533px) { #typed { font-size: 16px; } }
+  @media (min-width: 600px) and (min-height: 600px) { #typed { font-size: 18px; } }
+  #typed div:first-child { text-align: right; }
+  #typed p { margin: 0; }
+
+  /* The rail and the lamp. Positions are fractions of the page, the same frame the lamp light uses. */
+  .rail { position: absolute; left: 8%; right: 8%; top: 80%; height: 6px; margin-top: -3px; border-radius: 3px;
+    background: var(--ink); }
+  .rail::before, .rail::after { content: ""; position: absolute; top: -4px; width: 10px; height: 14px; border-radius: 3px;
+    background: var(--ink); }
+  .rail::before { left: -4px; }
+  .rail::after { right: -4px; }
+  .lamp { position: absolute; top: 0; bottom: 0; left: calc(var(--x, 0.5) * 100%); width: 0; }
+  /* The head sits a fixed 26 px above the capsule's centre (its post meets the capsule's top edge), so at any
+     viewport height the prop reads as a head on the rail, never hidden behind the capsule (review M3). */
+  .head { position: absolute; top: calc(80% - 26px); left: -10px; width: 20px; height: 4px; margin-top: -2px; border-radius: 2px;
+    background: var(--ink); }
+  .head::after { content: ""; position: absolute; left: 8px; top: 4px; width: 4px; height: 10px; background: var(--ink); }
+  .capsule { position: absolute; top: 80%; left: -34px; width: 68px; height: 28px; margin-top: -14px; padding: 0;
+    border-radius: 14px; border: 1.5px solid var(--ink); background: var(--ground); cursor: grab; touch-action: none;
+    transition: background-color 0.4s; }
+  .capsule:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  :root[data-mode="night"] .capsule { background: var(--ink); border-color: var(--ground); }
+  .led { position: absolute; left: 14px; top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%;
+    background: var(--accent); opacity: 0.25; transition: opacity 0.4s; }
+  :root[data-mode="night"] .led { opacity: 1; }
+  /* The capsule's tooltip: shown on hover or keyboard focus, under the capsule. */
+  .tip { position: absolute; top: calc(80% + 24px); left: 0; transform: translateX(-50%); visibility: hidden; white-space: nowrap;
+    padding: 4px 8px; border-radius: 6px; background: var(--ink); color: var(--ground); font: 500 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .capsule:hover + .tip, .capsule:focus-visible + .tip { visibility: visible; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<div class="stage">
+  <div class="hud">
+    <p id="hold-hint" data-ui-paint-text>Hold the lamp to switch day and night.</p>
+    <p id="mode-label" data-ui-paint-text aria-live="polite">Night mode</p>
+  </div>
+  <div id="typed" data-paint-ink>
+    <div>
+      <p data-ui-paint-text>Dear R.,</p>
+      <p data-ui-paint-text>the lamp came today.</p>
+      <p data-ui-paint-text>It is small and warm</p>
+      <p data-ui-paint-text>and it runs on a rail</p>
+      <p data-ui-paint-text>under the last line.</p>
+    </div>
+    <div>
+      <p data-ui-paint-text>Slide it left to read</p>
+      <p data-ui-paint-text>what I wrote first.</p>
+      <p data-ui-paint-text>Slide it right for</p>
+      <p data-ui-paint-text>the rest. At night</p>
+      <p data-ui-paint-text>it is all you need.</p>
+    </div>
+  </div>
+  <div class="rail" aria-hidden="true"></div>
+  <div class="lamp">
+    <div class="head" aria-hidden="true"></div>
+    <button class="capsule" type="button" aria-label="Lamp. Hold to switch day and night; arrow keys move it along the rail." aria-describedby="lamp-tip">
+      <span class="led"></span>
+    </button>
+    <span id="lamp-tip" class="tip" role="tooltip">Hold to switch day and night</span>
+  </div>
+</div>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // LAMP: every number that places the light or times a beat. notes.md gives each one's source and why.
+  const LAMP = {
+    y: 0.76,          // the head's height on the page: replaced on load and resize by the .head box's centre
+    z: 0.2,           // bulb height over the paper, short-side units
+    aimY: 0.3,        // aims up the page at a grazing angle
+    cone: 62,         // half angle, degrees
+    soft: 22,         // soft edge inside the cone, degrees
+    level: 0.1,       // light on a flat sheet at the aim point, on light paper
+    levelDark: 0.20,  // the same on dark paper (dark scheme): the owner's look call from the sweep in notes.md
+    kelvin: 5000,     // warm white
+    railMin: 0.12,    // the capsule's travel along the rail, page fractions: replaced on load and resize by the
+    railMax: 0.88,    // centres of the two word columns, so the pool always covers one of them (notes.md)
+    restX: 0.5,
+  };
+  const ROOM = { night: 0.06, day: 1 };   // ambient level
+  const BEAT = {
+    dimS: 0.4,        // day to night: the room light goes down (frames 0.1 to 0.5 s)
+    growS: 0.5,       // then the cone grows (frames 0.5 to 1.0 s)
+    outS: 0.4,        // night to day: cone out and room light up together (frames 7.0 to 7.4 s)
+    holdS: 0.45,      // a press this long switches (builder's value: the clip shows no finger)
+    followTau: 0.1,   // the lamp's lag behind the pointer, s (builder's value: the clip shows no finger)
+    keyStep: 0.04,    // one arrow key moves the lamp this far along the rail
+    slopPx: 8,        // a press that moves further than this is a drag, not a hold (Android's touch slop, 8 dp)
+  };
+
+  const root = document.documentElement;
+  const lampEl = document.querySelector(".lamp");
+  const headEl = document.querySelector(".head");
+  const columns = [...document.querySelectorAll("#typed > div")];
+  const capsule = document.querySelector(".capsule");
+  const modeLabel = document.querySelector("#mode-label");
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  const darkPaper = matchMedia("(prefers-color-scheme: dark)");
+
+  // The light's state. Only a pointer, a key or a hold changes it; with none of those (the checks) the page never
+  // calls set, so the hook's own light changes stand.
+  const st = { x: LAMP.restX, target: LAMP.restX, lamp: 1, room: ROOM.night, mode: "night", tween: null };
+
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  // Layout-derived light numbers (boxes only, no colour reads). The bulb is the head's centre. The travel stops at
+  // the outer word columns' centres: at either end the lamp stands under a column, so its pool lights that column.
+  function measure() {
+    const hb = headEl.getBoundingClientRect();
+    LAMP.y = (hb.top + hb.height / 2) / innerHeight;
+    const mid = (el) => {
+      const r = el.getBoundingClientRect();
+      return (r.left + r.width / 2) / innerWidth;
+    };
+    LAMP.railMin = Math.min(...columns.map(mid));
+    LAMP.railMax = Math.max(...columns.map(mid));
+    st.target = clamp(st.target, LAMP.railMin, LAMP.railMax);
+    st.x = clamp(st.x, LAMP.railMin, LAMP.railMax);
+  }
+  measure();
+
+  const lightsOf = () => [
+    lights.lamp({
+      at: [st.x, LAMP.y, LAMP.z],
+      aim: [st.x, LAMP.aimY, 0],
+      cone: LAMP.cone,
+      soft: LAMP.soft,
+      level: (darkPaper.matches ? LAMP.levelDark : LAMP.level) * st.lamp,
+      kelvin: LAMP.kelvin,
+    }),
+    lights.ambient(st.room),
+  ];
+
+  const painter = paint(document.querySelector("canvas"), {
+    seed: Number(new URLSearchParams(location.search).get("seed") ?? 1),
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: matchMedia("(prefers-color-scheme: dark)").matches ? 0 : 0.4 }), fields.text({ selector: "#typed" })],
+    materials: [materials.paper()],
+    lights: lightsOf(),
+  });
+
+  const ease = (u) => u * u * (3 - 2 * u);
+  const place = () => lampEl.style.setProperty("--x", String(st.x));
+  place();
+
+  // One frame loop for the page's own motion: the lamp easing to the pointer, and a day or night tween.
+  let raf = 0;
+  let last = 0;
+  function tick(now) {
+    raf = 0;
+    const dt = last ? Math.min((now - last) / 1000, 1 / 30) : 1 / 60;
+    last = now;
+    let busy = false;
+    const dx = st.target - st.x;
+    if (Math.abs(dx) > 1e-4 && !reduced.matches) {
+      st.x += dx * (1 - Math.exp(-dt / BEAT.followTau));
+      busy = true;
+    } else st.x = st.target;
+    if (st.tween) {
+      const tw = st.tween;
+      tw.t += dt;
+      const u = (t, from, len) => clamp((t - from) / len, 0, 1);
+      st.room = tw.room0 + (tw.room1 - tw.room0) * ease(u(tw.t, tw.roomAt, tw.roomLen));
+      st.lamp = tw.lamp0 + (tw.lamp1 - tw.lamp0) * ease(u(tw.t, tw.lampAt, tw.lampLen));
+      if (tw.t >= tw.end) st.tween = null;
+      else busy = true;
+    }
+    place();
+    painter.set({ lights: lightsOf() });
+    if (busy) request();
+    else last = 0;
+  }
+  const request = () => {
+    if (!raf) raf = requestAnimationFrame(tick);
+  };
+
+  function switchMode() {
+    const toDay = st.mode === "night";
+    st.mode = toDay ? "day" : "night";
+    root.dataset.mode = st.mode;
+    modeLabel.textContent = toDay ? "Day mode" : "Night mode";
+    const room1 = toDay ? ROOM.day : ROOM.night;
+    const lamp1 = toDay ? 0 : 1;
+    if (reduced.matches) {
+      st.tween = null;
+      st.room = room1;
+      st.lamp = lamp1;
+    } else {
+      // To day: the cone goes out as the room brightens. To night: the room dims, then the cone grows.
+      st.tween = toDay
+        ? { t: 0, room0: st.room, room1, roomAt: 0, roomLen: BEAT.outS, lamp0: st.lamp, lamp1, lampAt: 0, lampLen: BEAT.outS, end: BEAT.outS }
+        : { t: 0, room0: st.room, room1, roomAt: 0, roomLen: BEAT.dimS, lamp0: st.lamp, lamp1, lampAt: BEAT.dimS, lampLen: BEAT.growS, end: BEAT.dimS + BEAT.growS };
+    }
+    request();
+  }
+
+  darkPaper.addEventListener("change", request);
+  addEventListener("resize", () => {
+    measure();
+    request();
+  });
+
+  const moveTo = (x) => {
+    st.target = clamp(x, LAMP.railMin, LAMP.railMax);
+    request();
+  };
+  addEventListener("pointermove", (e) => moveTo(e.clientX / innerWidth));
+
+  // Hold either side of the capsule: a press that lasts BEAT.holdS switches, once per press. A press that moves
+  // more than BEAT.slopPx from where it went down is a drag: it slides the lamp (the window pointermove above)
+  // and cancels the hold, so a drag never switches day and night.
+  let hold = 0;
+  let down = null;
+  capsule.addEventListener("pointerdown", (e) => {
+    capsule.setPointerCapture(e.pointerId);
+    clearTimeout(hold);
+    down = { x: e.clientX, y: e.clientY };
+    hold = setTimeout(switchMode, BEAT.holdS * 1000);
+  });
+  capsule.addEventListener("pointermove", (e) => {
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > BEAT.slopPx) {
+      clearTimeout(hold);
+      down = null;
+    }
+  });
+  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) capsule.addEventListener(ev, () => {
+    clearTimeout(hold);
+    down = null;
+  });
+  capsule.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      moveTo(st.target + (e.key === "ArrowLeft" ? -1 : 1) * BEAT.keyStep);
+    } else if ((e.key === "Enter" || e.key === " ") && !e.repeat) {
+      e.preventDefault();
+      switchMode();
+    }
+  });
+</script>
+</body>
+</html>

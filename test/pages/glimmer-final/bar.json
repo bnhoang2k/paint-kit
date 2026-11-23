@@ -1,0 +1,100 @@
+{
+  "id": "glimmer-final",
+  "reference": {
+    "shelfKey": "none",
+    "title": "test page, not a bar"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": [
+      "--accent",
+      "--accent-2",
+      "--accent-3"
+    ]
+  },
+  "detail": 0.6,
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "laws": [
+    "transmit"
+  ],
+  "alive": {
+    "t0": 1,
+    "t1": 3
+  },
+  "text": {
+    "always": [
+      "#name"
+    ],
+    "lit": []
+  },
+  "beats": [
+    "A small stepped cluster of frosted-glass tiles in the middle of a bare page, lit from behind: light lives inside the tiles, and the ground between them stays unlit",
+    "Most tiles glow a pale, cool white tinted by the accent colours (ice blue, blue, lilac); one or two swell to pure white and fade back over about 1.2 s, as a light behind them drifts on its own",
+    "The pointer steers where the light sits: the lights behind follow a lagged copy of the pointer (25% of the way per frame, 95% of a jump in 174 ms), both by 20% of its offset (the reference's parallax; on a portrait page the share is scaled by width / height)",
+    "The tiles never move; only the light behind them does"
+  ],
+  "flash": {
+    "pointer": [
+      {
+        "t": 0,
+        "x": 0.5,
+        "y": 0.5
+      },
+      {
+        "t": 0.2,
+        "x": 0.3,
+        "y": 0.3
+      },
+      {
+        "t": 0.35,
+        "x": 0.65,
+        "y": 0.25
+      },
+      {
+        "t": 0.5,
+        "x": 0.4,
+        "y": 0.55
+      },
+      {
+        "t": 0.65,
+        "x": 0.7,
+        "y": 0.65
+      },
+      {
+        "t": 0.8,
+        "x": 0.5,
+        "y": 0.45
+      },
+      {
+        "t": 0.95,
+        "x": 0.3,
+        "y": 0.3
+      },
+      {
+        "t": 1.1,
+        "x": 0.65,
+        "y": 0.25
+      },
+      {
+        "t": 1.25,
+        "x": 0.4,
+        "y": 0.55
+      },
+      {
+        "t": 1.4,
+        "x": 0.7,
+        "y": 0.65
+      },
+      {
+        "t": 1.55,
+        "x": 0.5,
+        "y": 0.45
+      }
+    ]
+  }
+}

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit water layer</title>
+<!-- PLANTED FAULT (water-layer-rise-unclamped). A copy of test/pages/water-layer.html with exactly one change, the script before the import map: the layer's rise is read as given, not clamped at 0, so a negative rise puts the layer under the floor. Only the negative rise guard ("an unclamped negative rise fails") should fail on it (test/pages/water-layer.test.ts). -->
+<!-- The water layer test page: bar 05's pool (its tokens, waves, floor depth and lights) with a phone-shaped card
+     at the centre, 0.59 short sides wide and 852 / 393 times as tall, a frame near the ink (ramp 0.9) around a panel
+     near the ground (0.03), as bar 05 draws it. The floor is the accent (0.5), plain. By default the card is a
+     lifted layer (fields.water's `layer`): its own picture, seen through the water at its own depth, the floor less
+     its rise, so its outline bends less than the floor would bend it. Its picture holds the tone in red and its
+     coverage in green.
+     Test switches (water-layer.test.ts): `?rise=<h>` the layer's rise, short-side units (default 0.5; the floor is
+     1.0, so the layer sits at 0.5); `?old=<h>` draws the card the old way instead (bar 05 today: painted into the
+     floor picture, lifted by a rise map of height h, and seen at the floor's depth at its edge); `?moving` makes the
+     layer's rise and shift functions of t, read per frame through uniforms; `?shiftY=<y>` moves the still layer by
+     [0, y] (short-side units, y up), to match one frame of `?moving`; `?none` draws no card; `?floor=<d>` sets the
+     floor's depth (default 1.0); `?tone=<v>` sets the plain floor's tone, a ramp position (default 0.5), so a plain
+     floor can stand in for the card's panel (0.03) at the layer's depth; `?map=<h>` adds a rise map that lifts the
+     left half of the floor by h (with a layer or `?none`). `window.painter` is the painter. -->
+<style>
+  :root {
+    --ground: oklch(0.975 0.01 240);
+    --ink: oklch(0.23 0.035 260);
+    --accent: oklch(0.57 0.16 258);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.2 0.035 260);
+      --ink: oklch(0.94 0.015 235);
+      --accent: oklch(0.43 0.12 258);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script>
+  // The planted change: the engine"s fragment source is edited as it is handed to WebGL. __faultHits counts the
+  // shaders it changed, so the test can tell the fault is live.
+  (() => {
+    const P = WebGL2RenderingContext.prototype;
+    const set = P.shaderSource;
+    globalThis.__faultHits = 0;
+    P.shaderSource = function (shader, source) {
+      if (source.includes("return max(uWaterLayerRise, 0.0);")) {
+        source = source.replace("return max(uWaterLayerRise, 0.0);", "return uWaterLayerRise;");
+        globalThis.__faultHits++;
+      }
+      return set.call(this, shader, source);
+    };
+  })();
+</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // Bar 05's pool and card (bars/05-pool-light/index.html, WATER, CARD, TONE). water-layer.test.ts reads CARD.
+  const WATER = { waves: 6, speed: 1, depth: 0.6, floor: 1.0 };
+  const CARD = { width: 0.59, aspect: 852 / 393 };
+  const TONE = { floor: 0.5, frame: 0.9, panel: 0.03 };
+
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  function roundBox(x, y, cx, cy, hw, hh, r) {
+    const qx = Math.abs(x - cx) - (hw - r);
+    const qy = Math.abs(y - cy) - (hh - r);
+    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+  }
+  const cover = (d) => clamp01(0.5 - d);
+
+  // The pictures at the page's size: the plain floor, the floor with the card painted in (the old way), the card
+  // alone (red tone, green coverage), the card's footprint (red) for the old way's rise map, and the left half (red)
+  // for `?map`.
+  const q = new URLSearchParams(location.search);
+  const floorTone = q.has("tone") ? Number(q.get("tone")) : TONE.floor;
+
+  function pictures(w, h) {
+    const side = Math.min(w, h);
+    const cw = CARD.width * side, ch = cw * CARD.aspect;
+    const body = { cx: w / 2, cy: h / 2, hw: cw / 2, hh: ch / 2, r: 0.07 * cw };
+    const panel = { cx: w / 2, cy: h / 2 - ch * 0.275, hw: cw * 0.42, hh: ch * 0.175, r: 0.04 * cw };
+    const make = () => new ImageData(w, h);
+    const plain = make(), painted = make(), layer = make(), foot = make(), left = make();
+    const fl = Math.round(floorTone * 255);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const o = (y * w + x) * 4;
+        const c = cover(roundBox(x + 0.5, y + 0.5, body.cx, body.cy, body.hw, body.hh, body.r));
+        const p = cover(roundBox(x + 0.5, y + 0.5, panel.cx, panel.cy, panel.hw, panel.hh, panel.r));
+        const tone = TONE.frame + (TONE.panel - TONE.frame) * p;
+        plain.data.set([fl, fl, fl, 255], o);
+        const mixed = Math.round((TONE.floor + (tone - TONE.floor) * c) * 255);
+        painted.data.set([mixed, mixed, mixed, 255], o);
+        layer.data.set([Math.round(tone * 255), Math.round(c * 255), 0, 255], o);
+        foot.data.set([Math.round(c * 255), 0, 0, 255], o);
+        left.data.set([x < w / 2 ? 255 : 0, 0, 0, 255], o);
+      }
+    const canvasOf = (img) => {
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      c.getContext("2d").putImageData(img, 0, 0);
+      return c;
+    };
+    return { plain: canvasOf(plain), painted: canvasOf(painted), layer: canvasOf(layer), foot: canvasOf(foot), left: canvasOf(left) };
+  }
+
+  const p = pictures(Math.max(1, Math.round(innerWidth)), Math.max(1, Math.round(innerHeight)));
+  const pool = { waves: WATER.waves, speed: WATER.speed, depth: WATER.depth, floor: q.has("floor") ? Number(q.get("floor")) : WATER.floor };
+  let under = p.plain;
+  if (q.has("none")) {
+    // No card: the plain floor.
+  } else if (q.has("old")) {
+    under = p.painted;
+    pool.rise = { map: p.foot, height: Number(q.get("old")) };
+  } else {
+    const rise = q.has("rise") ? Number(q.get("rise")) : 0.5;
+    pool.layer = q.has("moving")
+      ? { picture: p.layer, rise: (t) => rise + 0.1 * Math.sin(1.1 * t), shift: (t) => [0, 0.02 * Math.sin(0.7 * t)] }
+      : { picture: p.layer, rise, ...(q.has("shiftY") ? { shift: [0, Number(q.get("shiftY"))] } : {}) };
+  }
+  if (q.has("map") && !q.has("old")) pool.rise = { map: p.left, height: Number(q.get("map")) };
+  window.painter = paint(document.querySelector("canvas"), {
+    seed: 1,
+    detail: 0.5,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.water(pool)],
+    materials: [materials.water({ under })],
+    lights: [lights.throughWater(lights.key({ dir: [-0.35, 0.45, 0.82], level: 0.15 })), lights.ambient(1.0)],
+  });
+</script>
+</body>
+</html>

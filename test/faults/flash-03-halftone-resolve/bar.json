@@ -1,0 +1,37 @@
+{
+  "id": "flash-03-halftone-resolve",
+  "reference": {
+    "shelfKey": "planted-fault",
+    "title": "flash-03-halftone-resolve planted fault"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": [
+      "--accent"
+    ]
+  },
+  "detail": 0.6,
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "laws": [
+    "relief"
+  ],
+  "alive": {
+    "t0": 1,
+    "t1": 2.5
+  },
+  "settle": 0.75,
+  "text": {
+    "always": [
+      ".caption"
+    ],
+    "lit": []
+  },
+  "beats": [
+    "planted fault"
+  ]
+}

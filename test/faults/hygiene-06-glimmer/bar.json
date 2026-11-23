@@ -1,0 +1,97 @@
+{
+  "id": "hygiene-06-glimmer",
+  "reference": {
+    "shelfKey": "planted-fault",
+    "title": "hygiene-06-glimmer planted fault"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": [
+      "--accent",
+      "--accent-2",
+      "--accent-3"
+    ]
+  },
+  "detail": 0.6,
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "laws": [
+    "transmit"
+  ],
+  "alive": {
+    "t0": 1,
+    "t1": 3
+  },
+  "text": {
+    "always": [
+      "#name"
+    ],
+    "lit": []
+  },
+  "beats": [
+    "planted fault"
+  ],
+  "flash": {
+    "pointer": [
+      {
+        "t": 0,
+        "x": 0.5,
+        "y": 0.5
+      },
+      {
+        "t": 0.2,
+        "x": 0.3,
+        "y": 0.3
+      },
+      {
+        "t": 0.35,
+        "x": 0.65,
+        "y": 0.25
+      },
+      {
+        "t": 0.5,
+        "x": 0.4,
+        "y": 0.55
+      },
+      {
+        "t": 0.65,
+        "x": 0.7,
+        "y": 0.65
+      },
+      {
+        "t": 0.8,
+        "x": 0.5,
+        "y": 0.45
+      },
+      {
+        "t": 0.95,
+        "x": 0.3,
+        "y": 0.3
+      },
+      {
+        "t": 1.1,
+        "x": 0.65,
+        "y": 0.25
+      },
+      {
+        "t": 1.25,
+        "x": 0.4,
+        "y": 0.55
+      },
+      {
+        "t": 1.4,
+        "x": 0.7,
+        "y": 0.65
+      },
+      {
+        "t": 1.55,
+        "x": 0.5,
+        "y": 0.45
+      }
+    ]
+  }
+}

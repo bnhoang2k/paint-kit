@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit fault paper-mud-lattice</title>
+<!-- PLANTED FAULT (paper-mud-lattice, checks fix round 3, 2026-11-15, review-checks-fix2 Minor 1): test/faults/
+     paper-mud-pinhole with a second lattice. Outside the ramp patch the sheet's coverage is 0.99, 0 on one texel in
+     every 5 x 5 block (each 5th texel each way, as paper-mud-pinhole), and 1 on another texel of the block (at 2, 2
+     mod 5). The page is still mud. 799f2f2 dropped an edge texel when a bare and a full texel lay within 2 of it, so
+     every 0.99 texel dropped and the floor read the full dots and the ramp patch. A single texel is not a region, so
+     the floor must read the 0.99 field and fail. test/pages/paper.test.ts reads it. -->
+<style>
+  :root {
+    --ground: oklch(0.94 0.015 85);
+    --ink: oklch(0.24 0.03 260);
+    --accent: oklch(0.68 0.12 60);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.26 0.015 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent: oklch(0.74 0.11 60);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  main { position: relative; max-width: 34rem; padding: 40px 32px; }
+  h1 { margin: 0 0 20px; font: 600 40px/1.15 Georgia, "Times New Roman", serif; letter-spacing: -0.01em; }
+  p { margin: 0; font: 400 19px/1.55 Georgia, "Times New Roman", serif; letter-spacing: 0.01em; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<main>
+  <h1 data-paint-ink data-paint-text="always">Night shift notes</h1>
+  <p data-paint-ink data-paint-text="lit">The lamp on the rail decides what you can read. Words inside its pool sit
+    sharp and black in the paper's fibres; words outside it sink back into the dark sheet until the light
+    slides over them again. Move the lamp and the page reads differently.</p>
+</main>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // The fault: coverage 0.99 everywhere, 0 on every 5th texel each way, 1 on the texel at (2, 2) mod 5, and 1 on a
+  // ramp patch centred at q (0.55, -0.28) (y up), side 0.18.
+  const PATCH = /* glsl */ `
+vec4 field(vec2 uv, vec2 q) {
+  vec2 p = (q - vec2(0.55, -0.28)) / 0.18 + 0.5; // 0..1 across the patch
+  bool inside = all(greaterThanEqual(p, vec2(0.0))) && all(lessThan(p, vec2(1.0)));
+  if (inside) return vec4(0.0, 1.0, p.x, 0.0);
+  vec2 texel = floor(uv * uRes); // vUv sits at texel centres
+  bool hole = mod(texel.x, 5.0) == 0.0 && mod(texel.y, 5.0) == 0.0;
+  bool solid = mod(texel.x, 5.0) == 2.0 && mod(texel.y, 5.0) == 2.0;
+  return vec4(0.0, hole ? 0.0 : (solid ? 1.0 : 0.99), 0.0, 0.0);
+}
+`;
+  const patch = fields.shape({ writes: ["coverage", "ink"], glsl: PATCH });
+
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.35 }), fields.text(), patch],
+    materials: [materials.paper()],
+    lights: [
+      lights.lamp({ at: [0.2, -0.05, 0.8], aim: [0.22, 0.3, 0], cone: 22, soft: 8, level: 0.115, kelvin: 2900 }),
+      lights.ambient(0.95),
+    ],
+  });
+</script>
+</body>
+</html>

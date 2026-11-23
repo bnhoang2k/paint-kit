@@ -1,0 +1,32 @@
+{
+  "id": "10-foil-card",
+  "reference": {
+    "shelfKey": "none",
+    "title": "holo card (several sources): a holo foil trading card on a page; builds from REFERENCE.md and copies bar 07's page structure (a card on a page, the key's shadow, the pointer's light)"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": ["--card", "--accent-warm", "--accent-cool"]
+  },
+  "detail": 0.6,
+  "seeds": [1, 2, 3],
+  "laws": ["relief", "shadow", "iridescence"],
+  "alive": { "rests": "The card lies still on a still page: nothing moves without the pointer. Foil colour never moves with the clock (study.md, Material law (c)), and the study gives no reason for the page to move on its own" },
+  "text": { "always": [".card-title", ".card-no", ".card-line", ".card-foot"], "lit": [] },
+  "flash": {
+    "pointer": [
+      { "t": 0, "x": 0.5, "y": 0.5 },
+      { "t": 0.5, "x": 1, "y": 0.5 },
+      { "t": 1.5, "x": 0, "y": 0.5 },
+      { "t": 2, "x": 0.5, "y": 0.5 }
+    ]
+  },
+  "beats": [
+    "A paper card lies on a paper page, raised off it: its card-stock tone stands apart from the page, and the key light gives it a lit edge and a shadow that falls away from the light",
+    "The card's art window is holographic foil with sunburst grooves (rays from one seeded point), so under the one key light each ray angle shows its own colour from the grating, and the burst reads as colour turning round its centre",
+    "Moving the pointer tilts the card and turns the key toward it (the paint call's job, both): the tilt turns the card's surface across the grooves, so the colour sweeps round the burst, and the turned key moves the card's lit edge and shadow",
+    "Printed line art (a sun ring round the burst's centre, a frame and three wave lines) covers the foil where it prints, and the card's words sit on its paper face, so both stay readable over the moving colour",
+    "Nothing moves without the pointer; when the pointer leaves the page the tilt eases back to flat"
+  ]
+}

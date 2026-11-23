@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit glass white</title>
+<!-- test/pages/glass.html with its light behind at level 100, far past white, so the tiles under it run deep into the finish's shoulder. test/pages/glass-white.test.ts reads the grain there: it must stay colourless and keep its size (a guard for d9198ed, the orange and red speckle a break-ui pass found). With ?opaque the tiles are matte with no light behind: the test reads the bare ground against that page. -->
+<style>
+  :root {
+    --ground: oklch(0.2 0.02 255);
+    --ink: oklch(0.93 0.02 85);
+    --accent: oklch(0.72 0.11 230);
+    --accent-2: oklch(0.8 0.08 200);
+    --accent-3: oklch(0.75 0.1 270);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --ground: oklch(0.93 0.015 85);
+      --ink: oklch(0.24 0.03 260);
+      --accent: oklch(0.6 0.13 240);
+      --accent-2: oklch(0.68 0.1 200);
+      --accent-3: oklch(0.62 0.12 280);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // Tiles on a 5 x 3 grid, 0.17 short-side units apart, 0.13 wide with 0.03 corners. Each tile is flat with an edge
+  // that falls 0.004 over its outer 0.01 (the rounded rim).
+  const TILES = /* glsl */ `
+uniform float uPitch, uSize, uCorner, uBevel, uDrop;
+float boxSd(vec2 p, vec2 b, float r) { vec2 d = abs(p) - b + r; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r; }
+vec4 field(vec2 uv, vec2 q) {
+  vec2 grid = vec2(5.0, 3.0);
+  vec2 p = q + 0.5 * grid * uPitch;
+  vec2 id = floor(p / uPitch);
+  if (any(lessThan(id, vec2(0.0))) || any(greaterThanEqual(id, grid))) return vec4(0.0, 0.0, 0.0, -1.0);
+  float d = boxSd(p - (id + 0.5) * uPitch, vec2(0.5 * uSize), uCorner);
+  float aa = 1.0 / min(uRes.x, uRes.y);
+  float cov = 1.0 - smoothstep(-aa, aa, d);
+  if (cov <= 0.0) return vec4(0.0, 0.0, 0.0, -1.0);
+  float edge = smoothstep(-uBevel, 0.0, d);
+  return vec4(0.004 - uDrop * edge * edge, cov, 0.0, 0.0);
+}
+`;
+  const tiles = fields.shape({
+    writes: ["height", "coverage", "slot"],
+    uniforms: { uPitch: 0.17, uSize: 0.13, uCorner: 0.03, uBevel: 0.01, uDrop: 0.004 },
+    glsl: TILES,
+  });
+
+  // The light behind: radius about one tile, drifting on a slow loop (12 s across, 9 s up and down), so a tile it
+  // passes swells to white over about a second and falls back. A function of t alone: setTime replays it.
+  const back = lights.glow({
+    behind: true,
+    at: (t) => [0.5 + 0.25 * Math.sin((2 * Math.PI * t) / 12), 0.5 + 0.12 * Math.sin((2 * Math.PI * t) / 9 + 0.7)],
+    radius: 0.14,
+    level: 100,
+    hues: "accents",
+    tint: 0.6,
+    follow: 0.5,
+  });
+
+  // `?opaque`: the same tiles in matte with no light behind, the plain page the ground test compares with.
+  const params = new URLSearchParams(location.search);
+  const opaque = params.has("opaque");
+  paint(document.querySelector("canvas"), {
+    seed: Number(params.get("seed") ?? 1),
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent", "--accent-2", "--accent-3"] }),
+    fields: [tiles],
+    materials: [opaque ? materials.matte() : materials.glass({ frost: 0.065 })],
+    lights: opaque ? [lights.ambient(0.3)] : [back, lights.ambient(0.3)],
+  });
+</script>
+</body>
+</html>

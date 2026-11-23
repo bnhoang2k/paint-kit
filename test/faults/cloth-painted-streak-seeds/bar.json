@@ -1,0 +1,10 @@
+{
+  "id": "cloth-painted-streak-seeds",
+  "reference": { "shelfKey": "test-fault", "title": "PLANTED FAULT (fix (g); Phase 2 Task 3 fix round 1): test/faults/cloth-painted-streak with its streak painted at seed 3 only (the page's ?seed=). Its highlight law passes at seeds 1 and 2 and fails at seed 3, and seed 3 is not first, so a gate that reads only seeds[0] passes it." },
+  "palette": { "ground": "--ground", "ink": "--ink", "accents": ["--accent"] },
+  "detail": 0.6,
+  "seeds": [2, 1, 3],
+  "laws": ["relief", "highlight"],
+  "alive": { "t0": 0.5, "t1": 1.5 },
+  "beats": []
+}

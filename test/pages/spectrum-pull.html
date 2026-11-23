@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit spectrum pull</title>
+<!-- The pull on the screen (Phase 2 Task 13, driver addition to Task 12): GLSL pk_pull drawn through the engine, so a
+     token swap reaches it the way it reaches a foil. A grid of swatches, 3 columns by 3 rows. Column i is the spectral
+     line at NM[i] nm (pk_spectrum), at a quarter of unit power so every clipped channel stays under the finish's
+     shoulder knee (0.8) and the frame shows the colour as computed. Row 0 is pull amount 0 (the line), row 1 amount 1
+     to the nearest ramp stop, row 2 amount 1 to the ground. One light gives each swatch exactly its albedo (a test
+     light, diffuse 1, no highlight); grain is off. spectrum-pull.test.ts reads the swatch centres in window.__pull. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.28 0.03 260);
+    --accent-a: oklch(0.66 0.13 30);
+    --accent-b: oklch(0.55 0.11 150);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.27 0.03 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent-a: oklch(0.7 0.12 35);
+      --accent-b: oklch(0.62 0.1 155);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, fromPage, GLSL_SPECTRUM } from "paint-kit";
+
+  const NM = [450, 530, 610];
+  const SCALE = 0.25;
+  const palette = fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent-a", "--accent-b"] });
+  // The swatch under a point: column and row from the uv, 3 x 3 cells.
+  const pull = {
+    id: "pull",
+    laws: ["relief"],
+    uniforms: {},
+    glsl: GLSL_SPECTRUM + /* glsl */ `
+const float u_$_nm[3] = float[3](${NM.map((n) => n.toFixed(1)).join(", ")});
+const float u_$_scale = ${SCALE.toFixed(2)};
+MatOut mat_$(Surf s) {
+  int col = clamp(int(s.uv.x * 3.0), 0, 2);
+  int row = clamp(int((1.0 - s.uv.y) * 3.0), 0, 2);
+  vec3 line = u_$_scale * pk_spectrum(u_$_nm[col]);
+  vec3 c = row == 0 ? pk_pull(line, 0.0, 0) : row == 1 ? pk_pull(line, 1.0, 0) : pk_pull(line, 1.0, 1);
+  MatOut m = matBase(s, c);
+  return m;
+}
+`,
+  };
+  // A test light: every swatch gets exactly its albedo (diffuse 1, no highlight).
+  const unit = {
+    id: "unit",
+    laws: [],
+    props: {},
+    uniforms: {},
+    glsl: /* glsl */ `
+LightSum light_$(Surf s, MatOut m) {
+  LightSum r;
+  r.diffuse = vec3(1.0); // not-colour: a unit light, so the frame shows the albedo
+  r.spec = vec3(0.0); // not-colour: no highlight
+  return r;
+}
+`,
+  };
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    palette,
+    fields: [fields.shape({ writes: ["coverage"], glsl: "vec4 field(vec2 uv, vec2 q) { return vec4(0.0, 1.0, 0.0, 0.0); }" })],
+    materials: [pull],
+    lights: [unit],
+    finish: { grain: 0 },
+  });
+
+  const cells = [];
+  for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) cells.push({ row, col, nm: NM[col], x: ((col + 0.5) / 3) * innerWidth, y: ((row + 0.5) / 3) * innerHeight });
+  window.__pull = { cells, scale: SCALE, ramp: () => palette.read() };
+</script>
+</body>
+</html>

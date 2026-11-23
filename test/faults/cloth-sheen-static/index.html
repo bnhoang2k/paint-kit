@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit cloth</title>
+<!-- PLANTED FAULT (cloth-sheen-static: the zipper's highlight is painted on). A copy of test/pages/cloth.html with
+     exactly one change: the sheen material's gloss is switched off and a bright, brushed streak is painted into its
+     colour at a fixed place on the band instead; it still declares the highlight law. Only relight should fail
+     on it, by its highlight law (test/pages/cloth.test.ts).
+     The cloth test page: denim (material slot 0) over the whole page from the twill field, and a metal zipper
+     chain (material slot 1, sheen) drawn by a shape field in a horizontal band. Lights: a key from the upper
+     left (light 0) and ambient (light 1). The twill's warp threads take the accent (indigo) and the weft the
+     ground. test/pages/cloth.test.ts reads TWILL_ANGLE and the band's place (BAND_Y, BAND_HALF, as fractions of
+     the sheet's height from the bottom); change both together. The tokens are this page's palette, light and dark. -->
+<style>
+  :root {
+    --ground: oklch(0.9 0.025 85);
+    --ink: oklch(0.22 0.03 260);
+    --accent: oklch(0.36 0.11 262);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.3 0.03 255);
+      --ink: oklch(0.93 0.02 85);
+      --accent: oklch(0.5 0.12 258);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const TWILL_ANGLE = 63; // degrees from the x axis: a right-hand twill, as on most denim
+  const BAND_Y = 0.5;
+  const BAND_HALF = 0.075;
+
+  // The zipper chain: a band bowed across its width and, gently, along its length (it lies over a rounded form),
+  // so its highlight moves with the light both ways. It carries interlocking metal teeth, which alternate sides of
+  // the centre line, each about three wales wide, so they stand clear of the weave below. Slot 1 and direction
+  // along the band inside it; outside it, no effect (height 0, slot none, direction none).
+  const zipper = fields.shape({
+    writes: ["height", "slot", "direction"],
+    uniforms: { uBandY: BAND_Y, uBandHalf: BAND_HALF },
+    glsl: /* glsl */ `
+uniform float uBandY, uBandHalf;
+float bandU(vec2 uv) { return (uv.y - uBandY) / uBandHalf; }
+vec4 field(vec2 uv, vec2 q) {
+  float u = bandU(uv);
+  if (abs(u) >= 1.0) return vec4(0.0, 1.0, 0.0, -1.0);
+  float halfLen = 0.5 * uRes.x / min(uRes.x, uRes.y);
+  float xl = q.x / halfLen;
+  float bow = (1.0 - u * u) * (0.02 + 0.015 * (1.0 - xl * xl));
+  // Teeth: one every 0.06 short-side units on each side, the sides offset by half a pitch so they interlock.
+  float pitch = 0.06;
+  float x = fract(q.x / pitch + (u > 0.0 ? 0.5 : 0.0)) - 0.5;
+  float a = abs(u);
+  float tooth = smoothstep(0.34, 0.26, abs(x)) * smoothstep(0.82, 0.7, a);
+  float crown = sqrt(max(1.0 - 9.0 * x * x, 0.0)) * (1.0 - 0.5 * a);
+  return vec4(bow + 0.012 * tooth * crown, 1.0, 0.0, 1.0);
+}
+vec2 fieldDir(vec2 uv, vec2 q) { return abs(bandU(uv)) < 1.0 ? vec2(1.0, 0.0) : vec2(0.0); }
+`,
+  });
+
+  // The fault: the sheen material with its gloss switched off and a brushed streak painted into its colour instead,
+  // a fixed distance above the band's centre. Everything else (its normal, its brushing by detail, its colour) is
+  // the real sheen's.
+  const real = materials.sheen({ roughness: 0.3, anisotropy: 0.6 });
+  const PAINTED = `
+  m.spec = 0.0;
+  bool inkDarkP = dot(uInk, vec3(0.2126, 0.7152, 0.0722)) < dot(uGround, vec3(0.2126, 0.7152, 0.0722)); // not-colour: Rec. 709 luminance weights
+  vec3 lighter = inkDarkP ? uGround : uInk;
+  float k = smoothstep(0.12, 0.0, abs((s.uv.y - u_$_bandY) / u_$_bandHalf - 0.4)) * (1.0 + 0.6 * brush * uDetail);
+  m.albedo = mixOklab(m.albedo, lighter, clamp(k, 0.0, 1.0)) * (1.0 + 2.0 * k);`;
+  if (!real.glsl.includes("m.spec = 0.9;")) throw new Error("cloth-sheen-static: the sheen's GLSL changed; update the fault");
+  const bakedSheen = {
+    ...real,
+    uniforms: { ...real.uniforms, bandY: BAND_Y, bandHalf: BAND_HALF },
+    glsl: "uniform float u_$_bandY, u_$_bandHalf;\n" + real.glsl.replace("m.spec = 0.9;", PAINTED),
+  };
+
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.twill({ wales: 48, angle: TWILL_ANGLE, scale: 0.35 }), zipper],
+    materials: [materials.denim({ dye: "accent0", wear: 0.5 }), bakedSheen],
+    lights: [lights.key({ dir: [-0.45, 0.55, 0.7], level: 0.9 }), lights.ambient(0.3)],
+  });
+</script>
+</body>
+</html>

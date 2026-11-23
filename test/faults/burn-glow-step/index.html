@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit burn</title>
+<!-- PLANTED FAULT (burn-glow-step). A copy of test/pages/burn.html with exactly one change: the ember does not fade.
+     Its shader's (1 - k^2)^2 is replaced by 1 out to `reach` (k under 1) and stays 0 past it, so it lights paper at its
+     reach as much as paper at the front and then stops: nothing beyond, no fade. It must fail the burn law's (c) by its
+     fade reading (Phase 2 Task 21 fix round 1, review I2). The rest of the page is burn.html's. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.25 0.03 50);
+    --accent: oklch(0.66 0.15 45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.32 0.02 260);
+      --ink: oklch(0.93 0.02 85);
+      --accent: oklch(0.72 0.14 45);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const q = new URLSearchParams(location.search);
+  const burn = fields.burn({ from: q.get("from") === "point" ? [0.5, 0.7] : "bottom", speed: 0.15, rag: 0.6, scorch: 1.2, startAt: q.get("wait") ? null : Number(q.get("start") ?? 0) });
+  window.burnStart = () => burn.start();
+  // The fault: the ember's falloff term replaced by 1 out to reach, kept through every setLight (`with`).
+  const FALL = "a > pkBurnD - pkBurnBand && k < 1.0 ? (1.0 - k * k) * (1.0 - k * k) : 0.0";
+  const flatten = (l) => {
+    if (!l.glsl.includes(FALL)) throw new Error("burn-glow-step: the ember's falloff term was not found");
+    return { ...l, glsl: l.glsl.replace(FALL, "a > pkBurnD - pkBurnBand && k < 1.0 ? 1.0 : 0.0"), with: (p) => flatten(l.with(p)) };
+  };
+  paint(document.querySelector("canvas"), {
+    seed: Number(q.get("seed") ?? 1),
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.5 }), burn],
+    materials: [materials.paper({ scorch: true })],
+    lights: [
+      lights.key({ dir: [-0.4, 0.5, 0.75], level: 0.9 }),
+      flatten(lights.ember({ field: burn, kelvin: [900, 1600], level: q.get("ember") === "0" ? 0 : 1.2, reach: 0.25 })),
+      lights.ambient(0.15),
+    ],
+  });
+</script>
+</body>
+</html>

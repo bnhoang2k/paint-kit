@@ -1,0 +1,28 @@
+{
+  "id": "07-light-stamp",
+  "reference": {
+    "shelfKey": "x.com/kombaiselects/status/2114462008372285732",
+    "title": "Textured stamps (Kombai Selects, credited to @mightbe_dg)"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": ["--accent"]
+  },
+  "detail": 0.6,
+  "seeds": [1, 2, 3],
+  "laws": ["relief", "shadow"],
+  "alive": { "t0": 1, "t1": 3 },
+  "text": { "always": [".stamp-title", ".stamp-issue"], "lit": [] },
+  "motion": {
+    "from": "study.md, What moves",
+    "cited": "a lit face goes from lit to dark within 0.2 s, so the light follows the pointer with a 0.05 s lag (95% of a move in 0.15 s)"
+  },
+  "beats": [
+    "A paper stamp lies among paper scraps on a desk. Its printed area is an embossed relief of ripple rings, screened as one-ink halftone dots after the light; its pale paper margin carries the title and issue line, printed solid",
+    "The pointer sets the light: the light comes from the cursor's side, so the ring faces turned toward the cursor light up and the stamp's shadow falls away from the cursor (the owner, look review)",
+    "The rings' lit faces bloom into larger light dots, and the faces turned away fall back to bare ink",
+    "The stamp has its own tone against the desk, stands raised on it and casts a shadow that turns as the light turns; the scraps cast their own small shadows",
+    "The desk paper's gentle warp drifts slowly (the sheet field's own drift); nothing else moves without the pointer"
+  ]
+}

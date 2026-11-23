@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit flash, CSS 5 Hz (planted fault)</title>
+<!-- PLANTED FAULT (flash-css-5hz: a CSS @keyframes light/dark swap over the whole viewport at 5 Hz). The page's own
+     setTime draws nothing: only a CSS animation in the HTML layer moves, 0.2 s per cycle, 5 flashes per s, over WCAG
+     2.3.1's limit of 3. The flash check must step CSS animations with the page clock to count it. -->
+<style>
+  :root { --light: oklch(0.97 0 0); --dark: oklch(0.2 0 0); }
+  html, body { margin: 0; height: 100%; }
+  /* The -1/120 s delay puts each swap half a frame off the 60 fps steps: a swap exactly on a step would land on
+     either side of it by float rounding, and the count would read 5 or 5.5 depending on it. */
+  body { animation: swap 0.2s step-end -8.333ms infinite; background: var(--light); }
+  @keyframes swap { 0% { background: var(--light); } 50% { background: var(--dark); } }
+</style>
+</head>
+<body>
+<script>
+  window.__paint = { ready: true, setTime() {}, stats: () => ({ frames: 0 }) };
+</script>
+</body>
+</html>

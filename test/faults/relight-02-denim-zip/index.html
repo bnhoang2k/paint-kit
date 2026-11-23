@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- PLANTED FAULT (relight-02-denim-zip: engine fault spec-fixed-light: the highlight lobe stays at the declared light direction). A copy of bars/02-denim-zip/index.html with one planted fault; test/pages/faults.test.ts asserts that it fails relight at every seed in its bar.json. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="paint-kit-bar" content="02-denim-zip">
+<title>Denim zip</title>
+<!-- bars/02-denim-zip: a zipper closes a phone screen of denim. Pull the slider down past the middle to open it.
+     The motion (the MOTION block, the drag, spring, swing, run-on, header build and the __seek clock) is
+     motion-kit's bar 13 ($PROJECTS_ROOT/motion-kit/bars/13-drag-past-a-threshold), kept byte for byte; see notes.md.
+     paint-kit draws the cloth: one shape field writes the denim twill, the tape, the teeth and the slider into the
+     sheet, the cloth halves slide outward row by row, and the V-gap is a coverage cut. The screen behind is plain
+     DOM, shown through the gap by a clip-path that follows the same geometry. Colour comes from the tokens below. -->
+<style>
+  :root {
+    /* The paint's palette (bar.json): weft (ground), the dark of the tape and metal (ink), the indigo dye (accent). */
+    --ground: oklch(0.66 0.03 85);
+    --ink: oklch(0.2 0.025 255);
+    --accent: oklch(0.3 0.065 250);
+
+    /* The page around the phone, and the phone's frame. */
+    --page-bg: #e6e8ec;
+    --bezel: #0b0c0e;
+    --bezel-shadow: rgb(0 0 0 / 0.35);
+    --focus-ring: #7fb8ff;
+    --island: #000;
+    --homebar: rgb(240 240 240);
+    --homebar-dim: rgb(16 16 16);
+    --status-ink: #fff;
+
+    /* The screen behind the cloth. */
+    --text-on-sky: #fff;
+    --title-glow: rgb(255 255 255 / 0.16);
+    --step-disc: rgb(28 58 98 / 0.86);
+    --step-desc: rgb(255 255 255 / 0.46);
+    --icon-line: rgb(255 255 255 / 0.86);
+    --start-fill: #0e7ff6;
+    --sky-0: #1a83f7;
+    --sky-1: #2992f7;
+    --sky-2: #3ca4f9;
+    --sky-3: #5eb5fa;
+    --sky-4: #68bffb;
+    --sky-glow: rgb(170 220 255 / 0.55);
+    --sky-glow-0: rgb(170 220 255 / 0);
+    --cream: #f3e9d9;
+    --cream-line: #c9b99f;
+    --cream-rule-1: #d8cbb4;
+    --cream-rule-2: #dccfb8;
+    --logo-sky-top: #1b7ff0;
+    --logo-sky-bottom: #55b0fb;
+    --cloud: #fff;
+    /* Rainbow bands in the logo window, outer first: magenta, red orange, orange, yellow green, green. */
+    --band-1: #d7287a;
+    --band-2: #f5604a;
+    --band-3: #e8a334;
+    --band-4: #b0c032;
+    --band-5: #4cc85c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --page-bg: #101114; }
+  }
+  :root[data-theme="dark"] { --page-bg: #101114; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  html { background: var(--page-bg); }
+  body {
+    background: var(--page-bg);
+    overflow: hidden;
+    font-family: -apple-system, "SF Pro Text", "Helvetica Neue", Arial, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* The stage holds the scaled phone. At scale 1 the phone is 393 px wide, wider than a 390 px window; the stage
+     clips it so the page itself never scrolls sideways. */
+  #stage { position: fixed; inset: 0; overflow: hidden; }
+  /* The phone screen is always laid out at 393 x 852 and scaled down to fit. */
+  #phone {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 393px; height: 852px;
+    transform-origin: 50% 50%;
+    transform: translate(-50%, -50%) scale(var(--fit, 1));
+    border-radius: 55px;
+    overflow: hidden;
+    background: var(--sky-0);
+    box-shadow: 0 0 0 10px var(--bezel), 0 30px 80px var(--bezel-shadow);
+    touch-action: none;
+    outline: none;
+    isolation: isolate;
+  }
+  #phone:focus-visible { box-shadow: 0 0 0 10px var(--bezel), 0 0 0 13px var(--focus-ring); }
+
+  /* ---- the cloth: the paint-kit canvas ---- */
+  #cloth { position: absolute; left: 0; top: 0; width: 393px; height: 852px; display: block; }
+
+  /* ---- screen behind the cloth, shown through the V-gap (clip-path set per frame) ---- */
+  #behind {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(120% 28% at 50% 100%, var(--sky-glow), var(--sky-glow-0) 70%),
+      linear-gradient(to bottom, var(--sky-0) 0, var(--sky-0) 80px, var(--sky-1) 300px, var(--sky-2) 500px, var(--sky-3) 700px, var(--sky-4) 852px);
+    clip-path: polygon(0 0, 0 0, 0 0);
+  }
+  /* Without WebGL the cloth is gone: show the opened screen, readable. */
+  :root[data-paint="fallback"] #behind { clip-path: none !important; }
+  #rezip {
+    position: absolute; left: 345px; top: 52px; width: 30px; height: 34px;
+    border: 0; padding: 0; background: none; cursor: pointer; opacity: 0.62;
+  }
+  #rezip-tip { position: absolute; right: 18px; top: 90px; visibility: hidden; white-space: nowrap; padding: 4px 8px; border-radius: 6px;
+    background: var(--island); color: var(--text-on-sky); font-size: 12px; line-height: 17px; }
+  #rezip:hover + #rezip-tip, #rezip:focus-visible + #rezip-tip { visibility: visible; }
+  #rezip svg { display: block; stroke: var(--text-on-sky); }
+
+  #logo {
+    position: absolute; left: 138.7px; top: 105.1px; width: 118px; height: 118px;
+    opacity: 0; transform-origin: 50% 50%;
+    will-change: transform, filter, opacity;
+  }
+  #logo svg { display: block; overflow: visible; }
+  #logo .card { fill: var(--cream); }
+  #logo .rule-1 { fill: var(--cream-rule-1); }
+  #logo .rule-2 { fill: var(--cream-rule-2); }
+  #logo .foot { fill: var(--cream-line); }
+  #logo .stop-top { stop-color: var(--logo-sky-top); }
+  #logo .stop-bottom { stop-color: var(--logo-sky-bottom); }
+  #clouds { fill: var(--cloud); }
+
+  #title {
+    position: absolute; left: 66.5px; top: 257px; width: 262.5px;
+    display: flex; white-space: nowrap;
+    font-size: 58px; line-height: 1; font-weight: 600; letter-spacing: -0.5px;
+    color: var(--text-on-sky);
+    text-shadow: 0 0 10px var(--title-glow);
+  }
+  #title span { display: inline-block; opacity: 0; will-change: transform, filter, opacity; }
+
+  .step { position: absolute; left: 0; width: 393px; height: 70px; }
+  .step .disc {
+    position: absolute; left: 31.5px; top: 4px; width: 29px; height: 29px; border-radius: 50%;
+    background: var(--step-disc); color: var(--text-on-sky); font-size: 16px; font-weight: 600;
+    display: grid; place-items: center;
+  }
+  .step .ico {
+    position: absolute; left: 75.5px; top: 5px; width: 20px; height: 17px;
+    border: 1.5px solid var(--icon-line); border-radius: 4px;
+  }
+  .step h3 { position: absolute; left: 105px; top: 1px; margin: 0; font-size: 17px; font-weight: 500; color: var(--text-on-sky); line-height: 22px; }
+  .step p {
+    position: absolute; left: 105px; top: 25px; width: 260px; margin: 0;
+    font-size: 14px; line-height: 17px; color: var(--step-desc);
+  }
+  #start {
+    position: absolute; left: 20px; top: 742px; width: 353px; height: 60px; border-radius: 22px;
+    background: var(--start-fill); color: var(--text-on-sky); font-size: 19px; font-weight: 600;
+    display: grid; place-items: center;
+  }
+
+  /* ---- system bits on top ---- */
+  #status { position: absolute; left: 0; top: 0; width: 393px; height: 54px; pointer-events: none; color: var(--status-ink); }
+  #status .time { position: absolute; left: 58px; top: 15px; font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
+  #status svg { position: absolute; left: 276px; top: 19px; fill: var(--status-ink); }
+  #status svg .wifi { fill: none; stroke: var(--status-ink); }
+  #status svg .cell { fill: none; stroke: var(--status-ink); }
+  #island { position: absolute; left: 140px; top: 12px; width: 113px; height: 32px; border-radius: 16px; background: var(--island); pointer-events: none; }
+  #homebar { position: absolute; left: 127px; top: 840px; width: 139px; height: 5px; border-radius: 3px; background: var(--homebar); pointer-events: none; }
+</style>
+<script>globalThis.__PAINT_TEST_FAULT = 'spec-fixed-light';</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<div id="stage">
+<div id="phone" tabindex="0" role="application" aria-label="Zipper unlock. Drag the zipper pull down past the middle of the screen to open it. Press Enter to open it with the keyboard, R to close it again.">
+  <canvas id="cloth" aria-hidden="true"></canvas>
+
+  <div id="behind">
+    <div data-ui-embed id="logo" aria-hidden="true">
+      <svg width="118" height="118" viewBox="0 0 118 118">
+        <defs>
+          <clipPath id="win"><rect x="13.3" y="29.4" width="91" height="67.5" rx="8"/></clipPath>
+          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" class="stop-top"/><stop offset="1" class="stop-bottom"/>
+          </linearGradient>
+          <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3.2"/></filter>
+          <filter id="bandsoft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="0.7"/></filter>
+        </defs>
+        <rect class="card" x="0" y="0" width="118" height="118" rx="24"/>
+        <rect class="rule-1" x="8" y="5" width="102" height="3" rx="1.5"/>
+        <rect class="rule-2" x="11" y="12" width="96" height="3" rx="1.5"/>
+        <rect x="13.3" y="29.4" width="91" height="67.5" rx="8" fill="url(#sky)"/>
+        <g clip-path="url(#win)">
+          <g id="clouds" opacity="0" filter="url(#soft)" fill-opacity="0.75">
+            <ellipse cx="22" cy="92" rx="18" ry="9"/><ellipse cx="42" cy="88" rx="14" ry="10"/><ellipse cx="62" cy="93" rx="16" ry="8"/>
+            <ellipse cx="84" cy="84" rx="16" ry="12"/><ellipse cx="94" cy="66" rx="11" ry="11"/><ellipse cx="80" cy="72" rx="10" ry="8"/>
+            <ellipse cx="86" cy="48" rx="12" ry="6" fill-opacity="0.5"/>
+          </g>
+          <g id="bands" fill="none" stroke-width="2.6" stroke-linecap="butt" filter="url(#bandsoft)"></g>
+        </g>
+        <rect class="foot" x="31" y="104" width="56" height="4" rx="2"/>
+      </svg>
+    </div>
+    <div data-ui-embed id="title" aria-hidden="true"></div>
+
+    <div data-ui-embed class="step" style="top:428px"><div class="disc">1</div><div class="ico"></div><h3>First step</h3><p>A short line of neutral placeholder text that fills two lines of this row.</p></div>
+    <div data-ui-embed class="step" style="top:502px"><div class="disc">2</div><div class="ico"></div><h3>Second step</h3><p>Another short line of neutral placeholder text that fills two lines.</p></div>
+    <div data-ui-embed class="step" style="top:576px"><div class="disc">3</div><div class="ico"></div><h3>Third step</h3><p>One more short line of neutral placeholder text that fills two lines.</p></div>
+    <div id="start" data-ui-embed>Start</div>
+    <button id="rezip" type="button" aria-label="Close the zipper again" aria-describedby="rezip-tip">
+      <svg width="30" height="34" viewBox="0 0 30 34" fill="none" stroke-width="1.6" stroke-linecap="round">
+        <rect x="4" y="5" width="22" height="26" rx="5"/><path d="M15 2v6M12 14h6M12 18h6M12 22h6"/>
+      </svg>
+    </button>
+    <span id="rezip-tip" role="tooltip">Close the zipper again</span>
+  </div>
+
+  <div data-ui-embed id="status" aria-hidden="true">
+    <div class="time">9:41</div>
+    <svg width="82" height="14" viewBox="0 0 82 14">
+      <rect x="0" y="8" width="3.4" height="5" rx="1"/><rect x="5.2" y="5.5" width="3.4" height="7.5" rx="1"/><rect x="10.4" y="3" width="3.4" height="10" rx="1"/><rect x="15.6" y="0" width="3.4" height="13" rx="1"/>
+      <path class="wifi" d="M31 4.2a9.5 9.5 0 0 1 12 0M33.4 7a6 6 0 0 1 7.2 0" stroke-width="1.8" stroke-linecap="round"/><circle cx="37" cy="10.6" r="1.6"/>
+      <rect class="cell" x="54" y="0.8" width="23" height="11.4" rx="3.6" stroke-opacity=".55" stroke-width="1.1"/><rect x="55.6" y="2.4" width="20" height="8.2" rx="2.3"/>
+    </svg>
+  </div>
+  <div id="island" aria-hidden="true"></div>
+  <div id="homebar" aria-hidden="true"></div>
+</div>
+</div>
+
+<script type="module">
+import { paint, fields, materials, lights, fromPage, GLSL_TWILL } from 'paint-kit';
+
+/* ==========================================================================
+   MOTION: every number that shapes time or distance lives here.
+   Times are in ms. "since grab" counts from the pointer down, "since release"
+   from the pointer up, "since commit" from the release that committed
+   (2933 ms into trace.json). A time with no "since" is ms into trace.json.
+   Lengths are CSS px on the 393 x 852 screen.
+   "Row N" and the other labels group the numbers as notes.md, MOTION values, does.
+   ========================================================================== */
+const MOTION = {
+  /* -- screen and zipper geometry (Viewport, Paint, Gap geometry) -- */
+  screenW: 393,                 // Viewport
+  screenH: 852,                 // Viewport
+  gapCenterX: 197.2,            // Gap geometry: gap center x
+  restSliderTop: 94.6,          // Row 1: slider top at rest
+  ringBelowTop: 68.9,           // Input: the finger holds the ring, slider top + 68.9
+  tabPivotBelowTop: 20,         // Row 2: tab pivot 20 below slider top
+  tabLength: 81,                // Paint: tab 81 from body top to ring bottom
+  apexAbove: 7.8,               // Gap geometry: apex sits 7.8 above slider top while moving
+  apexAboveAtRest: 9.2,         // Gap geometry: 9.2 above at rest, fades to 7.8 over the first 20 px of pull
+  apexAboveRestFade: 20,        // Gap geometry: the apex offset fades over the first 20 px of pull
+  // Gap geometry: half width of the gap at d px above the apex, d then half width
+  gapHalfWidth: [[0, 0], [50, 6.8], [100, 16.0], [200, 41.7], [300, 73.3], [400, 108.9], [500, 142.9], [600, 169.3], [700, 188.5], [1400, 272.5]],
+  clothExtraShift: 2.5,         // Cloth geometry: each half slides outward by half width + 2 to 3
+  clothSettleBelowApex: 18,     // Cloth geometry: the extra shift decays over about 18 px below the apex
+  statusBlurBand: 52,           // Paint: the top 52 px of the cloth is blurred
+
+  /* -- input (Input, Threshold) -- */
+  commitSliderTop: 426,         // Threshold: half the screen, between the two traced pulls: 366.6 springs back, 585 commits
+  grabReachX: 30,               // hit width of the tab (page choice)
+  releaseLeadMs: 16.7,          // Rows 5, 6, 11: one-shot motion after a release is timed from one frame before the frame that sees the
+                                // release, because the release happened during that frame. Without it the spring, swing,
+                                // run-on and header start one frame (17 ms) late.
+
+  /* -- Row 5: spring back after release -- */
+  springOmega: 22.25,           // Row 5: damped spring, rad/s
+  springZeta: 0.84,             // Row 5: damping ratio, start speed zero
+  springRestPx: 0.01,           // the spring is at rest once its swing can no longer move the slider 0.01 px (page choice)
+
+  /* -- Rows 2 and 8: pull tab while held. [ms since grab, degrees right]. The first grab uses table 0, every later grab table 1 -- */
+  tabGrab: [
+    [[0, 10.8], [17, 11.9], [33, 11.9], [67, 9.6], [84, 8.5], [117, 6.2], [150, 5.7], [234, 3.9], [317, 3.9], [434, 6.2], [484, 6.2]],   // Row 2 (grab 1)
+    [[0, 48], [34, 48], [50, 30], [67, 19], [84, 12], [100, 8.5], [117, 5.7], [150, 3.4], [184, 1.7], [317, 2.0], [434, 6.2], [634, 6.2], [850, 3.7], [1000, 3.7]] // Row 8 (grab 2)
+  ],
+  /* -- Row 6: pull tab swings like a damped pendulum after release -- */
+  tabReleaseLag: 16,            // Row 6: swing starts 1 frame after the slider spring (1183 vs 1167)
+  tabSwingOmega: 12.26,         // Row 6: sqrt(12.2^2 + 1.22^2), about 0.52 s period
+  tabSwingDamp: 1.22,           // Row 6: decay rate (each half swing 0.73 of the last)
+  tabReleaseSpeed: -25.3,       // Row 6: degrees per second toward 0 at release, so 0 is crossed at +109 ms
+  tabStopCrossing: 3,           // Row 6: crosses 0 at 1292 and 1550, hangs straight from 1800 (the 3rd crossing), no third swing
+
+  /* -- Rows 10 to 13: run-on and exit after a committing release -- */
+  runPeakSpeed: 3600,           // Row 11 and 12: px/s, ease-in target (peak step about 66 px per frame)
+  runEaseInMs: 24,              // Row 11: time constant of the ease-in
+  runPeakAtMs: 140,             // Row 12: speed peaks 140 ms after the commit, ease out after it
+  runSlowdown: 13750,           // Row 12: px/s^2 while the halves slow (31 px per frame by 3200)
+  runApexFadeMs: 84,            // Row 11: apex offset 7.8 falls to 0 by the time the slider is at 799.8 (3017)
+  runCutMs: 284,                // Row 13: the last scraps of cloth vanish in one frame, 284 ms after the commit
+  restRefSliderTop: 585.2,      // Row 10: reference slider top at release; the run is scaled from here
+
+  /* -- Row 14: logo rises into place -- */
+  logoRiseFrom: 129,            // Row 14: starts 129 below its rest
+  logoRiseStartMs: 105,         // Row 14: the rise starts 105 ms after the commit
+  logoRiseOmega: 8.9,           // Row 14: critically damped, rad/s
+  // Row 15: logo blur sigma in px. [ms since commit, sigma]
+  logoBlur: [[100, 22], [184, 15.4], [200, 13.3], [217, 9.7], [234, 9.2], [267, 8.1], [317, 6.2], [367, 4.0], [417, 3.3], [467, 2.9], [517, 2.2], [567, 1.2], [617, 0]],
+  // Row 16: logo opacity. [ms since commit, opacity]
+  logoOpacity: [[100, 0], [117, 0.185], [167, 0.28], [217, 0.41], [267, 0.50], [317, 0.65], [367, 0.815], [467, 0.887], [567, 0.968], [650, 1]],
+  // Row 16: logo scale as a fraction of its final width
+  logoScale: [[100, 0.88], [167, 0.88], [200, 0.926], [217, 0.94], [450, 0.95], [467, 0.959], [500, 0.967], [567, 0.979], [600, 0.984], [650, 0.992], [767, 0.992], [784, 1]],
+
+  /* -- Row 17: title, 9 letters left to right -- */
+  titleFirstStartMs: 15,        // Row 17: letter 1 begins 15 ms after the commit
+  titleStaggerMs: 55,           // Row 17: 55 ms per letter
+  titleFadeMs: 275,             // Row 17: opacity = (t / 275) squared, 10 to 90 percent in about 190 ms
+  titleRisePx: 6,               // Row 17: each letter starts 6 px low and rises into place
+  titleRiseMs: 350,             // Row 17: rise is done about 350 ms after the letter starts (letter 1 by 3300)
+  titleBlurPx: 5,               // Row 17: letters go from soft to sharp
+
+  /* -- Row 18: rainbow draws into the logo window -- */
+  rainbowDrawMs: 184,           // Row 18: outer band reaches the window edge at 3767
+  // Row 18: start of each band, ms since commit, outer first
+  rainbowBandStartMs: [650, 700, 720, 770, 850],
+  rainbowInnerDrawMs: 165,      // Row 18: inner bands draw faster than the outer one
+  /* -- Row 19: clouds build in. [ms since commit, opacity]. They finish building at 1667 ms. -- */
+  clouds: [[634, 0], [667, 0.04], [767, 0.20], [867, 0.37], [967, 0.53], [1067, 0.63], [1200, 0.75], [1334, 0.85], [1467, 0.95], [1600, 0.99], [1667, 1]],
+  /* -- Row 20: home indicator dims then fades out. grey level (0 to 255) by ms since commit -- */
+  homeGrey: [[0, 240], [67, 240], [134, 208], [200, 167], [334, 166], [400, 151], [467, 127], [534, 103], [600, 80], [667, 59], [734, 47], [800, 33], [867, 16], [934, 16]],
+  homeFade: [1017, 1200],       // Row 20: the bar blends into the background, ms since commit
+  headerEndMs: 1700,            // Row 19: the header motion ends here, just after the clouds finish (1667)
+
+  /* -- loop -- */
+  frameMs: 16.7,                // one frame at 60 fps
+  maxStep: 50                   // capped time step per frame, ms
+};
+
+/* ---------- helpers ---------- */
+const W = MOTION.screenW, H = MOTION.screenH, CX = MOTION.gapCenterX, REST = MOTION.restSliderTop;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+// Monotone cubic through points, held flat outside the first and last x.
+function curve(pts) {
+  const n = pts.length, xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const h = [], d = [], m = new Array(n);
+  for (let i = 0; i < n - 1; i++) { h[i] = xs[i + 1] - xs[i]; d[i] = (ys[i + 1] - ys[i]) / h[i]; }
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    if (d[i - 1] * d[i] <= 0) m[i] = 0;
+    else { const w1 = 2 * h[i] + h[i - 1], w2 = h[i] + 2 * h[i - 1]; m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]); }
+  }
+  return x => {
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n - 1]) return ys[n - 1];
+    let i = 0; while (x > xs[i + 1]) i++;
+    const t = (x - xs[i]) / h[i], t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * h[i] * m[i] + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * h[i] * m[i + 1];
+  };
+}
+const gapHW = curve(MOTION.gapHalfWidth);
+const tabCurves = MOTION.tabGrab.map(curve);
+const fLogoBlur = curve(MOTION.logoBlur), fLogoOpacity = curve(MOTION.logoOpacity), fLogoScale = curve(MOTION.logoScale);
+const fClouds = curve(MOTION.clouds), fHomeGrey = curve(MOTION.homeGrey);
+
+/* ---------- DOM ---------- */
+const $ = id => document.getElementById(id);
+const phone = $('phone'), canvas = $('cloth'), behind = $('behind'), logo = $('logo'), titleEl = $('title'), homebar = $('homebar'), cloudsEl = $('clouds'), bandsEl = $('bands');
+const reduced = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+// title letters
+const TITLE = 'Dashboard';
+const letters = [...TITLE].map(ch => { const s = document.createElement('span'); s.textContent = ch; titleEl.appendChild(s); return s; });
+function fitTitle() {
+  // Scale the 9 letters so the word fills a 262.5 px title box (Row 17: x 66.5 to 329.0).
+  titleEl.style.width = 'auto'; titleEl.style.fontSize = '58px';
+  const nat = titleEl.scrollWidth;
+  const size = Math.min(58, 58 * 262.5 / nat);
+  titleEl.style.fontSize = size.toFixed(2) + 'px';
+  titleEl.style.left = (66.5 + (262.5 - titleEl.scrollWidth) / 2).toFixed(2) + 'px';
+}
+fitTitle();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
+
+// rainbow bands: arcs of one circle, drawn as strokes (pathLength = 1 so the dash maths is plain)
+// Band colours, outer first, are the page tokens --band-1 to --band-5.
+const BANDS = [1, 2, 3, 4, 5].map(i => `var(--band-${i})`);
+// The outer band's outer edge is one circle through (202.8, 195), (211.1, 185) and its top point (238, 174):
+// center (238, 214) screen px, radius 40. The window bottom is y 202 and its right edge x 243, so each band runs from its
+// foot on the window bottom to the window's right edge.
+const ARC = { cx: 238 - 138.7, cy: 214 - 105.1, r: 40, bandW: 2.3, footY: 202 - 105.1, edgeX: 243 - 138.7 };
+const bandEls = BANDS.map((col, i) => {
+  const r = ARC.r - ARC.bandW / 2 - i * ARC.bandW, p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const pt = a => [ARC.cx + r * Math.cos(a), ARC.cy + r * Math.sin(a)];
+  const a0 = Math.PI + Math.asin((ARC.cy - ARC.footY) / r), a1 = 2 * Math.PI - Math.acos((ARC.edgeX - ARC.cx) / r);
+  const s = pt(a0), e = pt(a1);
+  p.setAttribute('d', `M${s[0].toFixed(2)} ${s[1].toFixed(2)} A${r} ${r} 0 0 1 ${e[0].toFixed(2)} ${e[1].toFixed(2)}`);
+  p.style.stroke = col; p.setAttribute('pathLength', '1');
+  p.style.strokeDasharray = '1 2'; p.style.strokeDashoffset = '1';
+  bandsEl.appendChild(p); return p;
+});
+
+/* ---------- zipper geometry (bar 13's drawing sizes, screen px) ---------- */
+const TAPE_HALF = 32.5, STITCH = 24.5, TOOTH_OUT = 10, TOOTH_IN = 3.5, TOOTH_PITCH = 18, TOOTH_H = 5.5;
+function apexOf(S, runMs) {
+  const rest = clamp((S - REST) / MOTION.apexAboveRestFade, 0, 1);
+  let above = MOTION.apexAbove + (MOTION.apexAboveAtRest - MOTION.apexAbove) * (1 - rest);
+  if (runMs > 0) above *= 1 - clamp(runMs / MOTION.runApexFadeMs, 0, 1);   // Row 11: after release the apex closes on the slider top
+  return S - above;
+}
+// How far a row of the left half has slid left (the right half slides the same distance right).
+function slide(y, A) {
+  if (y <= A) return gapHW(A - y) + MOTION.clothExtraShift;
+  return MOTION.clothExtraShift * Math.exp(-(y - A) / MOTION.clothSettleBelowApex);
+}
+
+/* ---------- the cloth: one paint-kit shape field ----------
+   The page samples each row's slide every SLIDE_STEP px of screen y (from y = SLIDE_Y0) into uSlide, and the
+   shader reads it back with linear steps, so the weave, tape, stitches and teeth ride on the same shift as in
+   bar 13's drawCloth. Heights are in short-side units (the screen's 393 px width is 1), drawn as px / 393. */
+const SLIDE_Y0 = -12, SLIDE_STEP = 4, SLIDE_N = Math.ceil((H + 24) / SLIDE_STEP) + 1;
+const U = {
+  uSlide: new Array(SLIDE_N).fill(0),
+  uS: REST, uTab: 0,
+  uWales: 96, uAngle: 63 * Math.PI / 180, uFold: 1,
+};
+const ZIP_GLSL = /* glsl */ `
+uniform float uSlide[${SLIDE_N}];
+uniform float uS, uTab, uWales, uAngle, uFold;
+const float SW = ${W.toFixed(1)}, SH = ${H.toFixed(1)}, CX = ${CX.toFixed(2)};
+const float PXU = 1.0 / SW;                 // one screen px in short-side units
+const float TAPE = ${TAPE_HALF.toFixed(2)}, STITCHX = ${STITCH.toFixed(2)};
+const float T_OUT = ${TOOTH_OUT.toFixed(2)}, T_IN = ${TOOTH_IN.toFixed(2)}, T_PITCH = ${TOOTH_PITCH.toFixed(2)}, T_HALF = ${(TOOTH_H / 2).toFixed(3)};
+const float PIVOT = ${MOTION.tabPivotBelowTop.toFixed(2)}, TAB_L = ${(MOTION.tabLength - MOTION.tabPivotBelowTop).toFixed(2)}, RING = ${(MOTION.ringBelowTop - MOTION.tabPivotBelowTop).toFixed(2)};
+const float PI = 3.14159265;
+const float BLUR_BAND = ${MOTION.statusBlurBand.toFixed(1)};
+
+float slideAt(float y) {
+  float f = clamp((y - (${SLIDE_Y0.toFixed(1)})) / ${SLIDE_STEP.toFixed(1)}, 0.0, ${(SLIDE_N - 1.001).toFixed(3)});
+  int i = int(f);
+  return mix(uSlide[i], uSlide[i + 1], fract(f));
+}
+
+// --- the weave: the engine's twill (GLSL_TWILL, the chunk fields.twill builds from), read at the cloth's own
+// coordinate so it travels with its half. Warp direction length 1, weft 0.6 (denim tells them apart).
+${GLSL_TWILL}
+// Macro relief: soft folds that run down the screen (stretched about 6:1 along y), as a hanging cloth falls.
+float folds(vec2 q) {
+  vec2 off = vec2(hash11(uSeed + 3.0), hash11(uSeed + 9.0)) * 100.0;
+  return uFold * 0.016 * (0.65 * snoise(q * vec2(3.2, 0.5) + off) + 0.35 * snoise(q * vec2(7.0, 1.1) - off));
+}
+
+// A rounded box's signed distance (centre c, half size b, corner r), screen px.
+float box(vec2 p, vec2 c, vec2 b, float r) { vec2 d = abs(p - c) - b + r; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r; }
+
+struct Zip { float h; float cov; float slot; vec2 dir; };
+
+Zip zipAt(vec2 uv) {
+  vec2 P = vec2(uv.x * SW, (1.0 - uv.y) * SH);   // screen px, y down
+  Zip z;
+  float o = slideAt(P.y);
+  float side = P.x < CX ? -1.0 : 1.0;
+  float e = side * (P.x - CX) - o;                 // outward distance from this half's edge
+  vec2 Pc = vec2(P.x - side * o, P.y);             // where this point sits on the unslid cloth
+  vec2 qc = vec2(Pc.x - SW * 0.5, SH * 0.5 - Pc.y) * PXU;
+  float base = folds(qc);
+
+  // Cloth, by default. Under the status bar (MOTION.statusBlurBand, the band bar 13 blurs) the weave is soft: a
+  // third of the weave relief, and the dye colour only (direction length 0.9 reads as warp), so the status text
+  // sits on an even tone. The band fades in over 24 px so no edge shows.
+  float soft = smoothstep(BLUR_BAND + 16.0, BLUR_BAND - 8.0, P.y);
+  vec2 wd = twillDir(qc, uWales, uAngle);
+  z.h = base + twillHeight(qc, uWales, uAngle, SW, uDetail) * (1.0 - 0.7 * soft);
+  z.cov = 1.0;
+  z.slot = 0.0;
+  z.dir = normalize(wd) * mix(length(wd), 0.9, soft);
+  bool covered = e > -T_IN;
+
+  // The tape (slot 2: a woven tape, all warp, dyed the ink) from T_IN inside the edge to TAPE outside it; the cloth beside it rises to meet it.
+  if (e > -T_IN && e < TAPE) {
+    float edgeRound = smoothstep(TAPE, TAPE - 2.0, e);
+    z.h = base + (1.4 * edgeRound + 0.25) * PXU;
+    z.slot = 2.0;
+    z.dir = vec2(0.0, 1.0);
+    // Stitches: a line of ground-coloured thread (denim's weft colour) at STITCHX, dashes anchored to cloth rows.
+    float st = abs(e - STITCHX);
+    if (st < 0.7 && fract(P.y / 12.0) < 0.5) {
+      z.h += 0.6 * sqrt(max(1.0 - (st / 0.7) * (st / 0.7), 0.0)) * PXU;
+      z.slot = 0.0;
+      z.dir = vec2(0.0, 0.6);
+    }
+  } else if (e >= TAPE) {
+    z.h += 1.4 * exp(-(e - TAPE) / 12.0) * PXU;
+  }
+
+  // Teeth: one every T_PITCH px on each side (the sides half a pitch apart, so they interlock), each anchored to
+  // its cloth row and tilted to stay square to its edge. The higher of the two sides' nearest teeth wins.
+  float best = -1.0;
+  for (int si = 0; si < 2; si++) {
+    float s = si == 0 ? -1.0 : 1.0;
+    float off = s < 0.0 ? 0.0 : T_PITCH * 0.5;
+    float k0 = floor((P.y - off) / T_PITCH + 0.5);
+    for (int j = -1; j <= 1; j++) {
+      float y0 = off + T_PITCH * (k0 + float(j));
+      float o0 = slideAt(y0);
+      float slope = (slideAt(y0 + 3.0) - slideAt(y0 - 3.0)) / 6.0;
+      float u = s * (P.x - CX) - o0;
+      float v = (P.y - y0 + slope * u) / sqrt(1.0 + slope * slope);
+      if (u > -T_IN && u < T_OUT && abs(v) < T_HALF) {
+        float a = v / T_HALF;
+        float crown = sqrt(max(1.0 - a * a, 0.0));
+        float ends = smoothstep(-T_IN, -T_IN + 1.5, u) * smoothstep(T_OUT, T_OUT - 2.0, u);
+        float th = (2.2 + 2.6 * crown) * mix(0.55, 1.0, ends);
+        if (th > best) {
+          best = th;
+          z.dir = normalize(vec2(s, slope));
+        }
+      }
+    }
+  }
+  if (best > 0.0) {
+    z.h = base + best * PXU;
+    z.slot = 1.0;
+    covered = true;
+  }
+
+  // The slider: body, inner plate and knob, then the pull tab hinged at PIVOT and swung by uTab degrees.
+  vec2 L = vec2(P.x - CX, P.y - uS);
+  float bodyD = box(L, vec2(0.0, 20.0), vec2(16.0, 20.0), 7.0);
+  float lift = -1.0;
+  vec2 ldir = vec2(0.0, 1.0);
+  if (bodyD < 0.0) {
+    float across = clamp(L.x / 16.0, -1.0, 1.0);
+    lift = 3.0 + 3.0 * sqrt(max(1.0 - across * across, 0.0)) * smoothstep(0.0, -2.5, bodyD);
+    if (box(L, vec2(0.0, 31.0), vec2(12.5, 7.0), 2.0) < 0.0) lift -= 0.8;
+    float kd = box(L, vec2(0.0, 17.0), vec2(6.0, 15.5), 6.0);
+    if (kd < 0.0) lift += 1.6 * sqrt(max(1.0 - (L.x / 6.0) * (L.x / 6.0), 0.0)) * smoothstep(0.0, -1.5, kd);
+  }
+  float ph = uTab * PI / 180.0;
+  vec2 d = vec2(L.x, L.y - PIVOT);
+  vec2 T = vec2(d.x * cos(ph) - d.y * sin(ph), d.x * sin(ph) + d.y * cos(ph));
+  float tabD = box(T, vec2(0.0, (TAB_L - 2.0) * 0.5), vec2(13.0, (TAB_L + 2.0) * 0.5), 8.0);
+  float hole = length(T - vec2(0.0, RING)) - 7.2;
+  if (tabD < 0.0 && hole > 0.0) {
+    float across = T.x / 13.0;
+    float rim = smoothstep(0.0, -2.0, tabD) * smoothstep(0.0, 1.5, hole);
+    lift = 7.0 + 2.2 * (1.0 - across * across) * rim;
+    ldir = vec2(sin(ph), -cos(ph));
+  }
+  if (lift > 0.0) {
+    z.h = base + lift * PXU;
+    z.slot = 1.0;
+    z.dir = ldir;
+    covered = true;
+  }
+
+  // The V-gap: where neither half's material nor a tooth or the slider reaches, there is no surface.
+  if (!covered) {
+    z.cov = 0.0;
+    z.h = 0.0;
+    z.slot = -1.0;
+    z.dir = vec2(0.0);
+  }
+  return z;
+}
+vec4 field(vec2 uv, vec2 q) { Zip z = zipAt(uv); return vec4(z.h, z.cov, 0.0, z.slot); }
+vec2 fieldDir(vec2 uv, vec2 q) { return zipAt(uv).dir; }
+`;
+const zipShape = fields.shape({ writes: ['height', 'coverage', 'slot', 'direction'], uniforms: U, glsl: ZIP_GLSL });
+// The page's state changes outside the engine's clock (a drag, the __seek clock): keep the field's own redraw call.
+let invalidate = () => {};
+const zipField = { ...zipShape, init(gl, ctx) { invalidate = ctx.invalidate; return zipShape.init(gl, ctx); } };
+
+const painter = paint(canvas, {
+  seed: 1,
+  detail: 0.6,
+  palette: fromPage({ ground: '--ground', ink: '--ink', accents: ['--accent'] }),
+  fields: [zipField],
+  materials: [
+    materials.denim({ dye: 'accent0', wear: 0.45 }),          // slot 0: the cloth (and the stitch thread, as weft)
+    materials.sheen({ roughness: 0.28, anisotropy: 0.5 }),   // slot 1: teeth, slider and pull tab
+    materials.denim({ dye: 'ink', wear: 0.15 }),             // slot 2: the woven tape, all warp, dyed the ink
+  ],
+  lights: [lights.key({ dir: [-0.45, 0.55, 0.7], level: 0.9 }), lights.ambient(0.3)],
+});
+
+/* ---------- state ---------- */
+const S0 = { mode: 'rest', S: REST, ptrY: 0, grabDY: 0, pointerId: null, springT: 0, springFrom: REST,
+  run: null, commitT: null, grabs: 0, tab: { mode: 'none', grabT: 0, table: 0, sign: 1, relT: 0, th0: 0, deg: 0 }, queue: [] };
+let st = JSON.parse(JSON.stringify(S0));
+let simNow = 0, lastTs = null, raf = 0;
+const events = {};                    // the page's event log: each name and the time it first happened, in ms
+const last = { t: 0, S: REST };       // the previous update's time and slider top
+
+// ?seek: the gate's fixed clock. No live loop runs; window.__seek(ms) replays the recorded input (see "the fixed clock" below).
+const seekMode = new URLSearchParams(location.search).has('seek');
+function kick() { if (!raf && !seekMode) { lastTs = null; raf = requestAnimationFrame(frame); } }
+
+/* ---------- input ----------
+   The pointer handlers below take screen px (the 393 x 852 phone). The live page feeds them from
+   pointer events; under ?seek, __seek feeds them from the recorded samples. */
+function toScreen(e) {
+  const r = phone.getBoundingClientRect(), s = r.width / W;
+  return [(e.clientX - r.left) / s, (e.clientY - r.top) / s];
+}
+function onTab(x, y) { return Math.abs(x - CX) <= MOTION.grabReachX && y >= st.S - 4 && y <= st.S + MOTION.tabLength + 12; }
+function press(id, x, y) {            // true when the press grabs the tab
+  if (st.pointerId !== null || (st.mode !== 'rest' && st.mode !== 'spring')) return false;
+  if (!onTab(x, y)) return false;
+  st.pointerId = id; st.queue.push(['down', x, y]); kick();
+  return true;
+}
+function move(id, x, y) {
+  if (id === st.pointerId) { st.queue.push(['move', x, y]); kick(); }
+  else if (st.pointerId === null) phone.style.cursor = (st.mode === 'rest' || st.mode === 'spring') && onTab(x, y) ? 'grab' : 'default';
+}
+// seenAt (fixed clock only): the frame that sees the release, so the release lead below stays one frame between frames too.
+function lift(id, cancelled, seenAt) { if (id === st.pointerId) { st.queue.push([cancelled ? 'cancel' : 'up', 0, 0, seenAt]); kick(); } }
+phone.addEventListener('pointerdown', e => {
+  if (seekMode) return;
+  const [x, y] = toScreen(e);
+  if (!press(e.pointerId, x, y)) return;
+  e.preventDefault(); phone.focus({ preventScroll: true });
+  try { phone.setPointerCapture(e.pointerId); } catch (_) {}
+});
+phone.addEventListener('pointermove', e => { if (!seekMode) move(e.pointerId, ...toScreen(e)); });
+const up = e => { if (!seekMode) lift(e.pointerId, e.type === 'pointercancel'); };
+phone.addEventListener('pointerup', up); phone.addEventListener('pointercancel', up);
+phone.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') && st.mode === 'rest') { e.preventDefault(); st.queue.push(['key']); kick(); }
+  else if (e.key === 'r' || e.key === 'R') reset();
+});
+$('rezip').addEventListener('click', reset);
+
+function reset() {
+  st = JSON.parse(JSON.stringify(S0)); canvas.style.visibility = 'visible'; render(simNow); kick();
+}
+
+/* ---------- simulation ---------- */
+function holdDeg(now) { const t = st.tab; return reduced() ? 0 : t.sign * tabCurves[t.table](now - t.grabT); }
+function swingDeg(now) {
+  const t = st.tab, dt = (now - t.relT) / 1000;
+  if (dt <= 0) return t.deg;
+  const w = MOTION.tabSwingOmega, c = MOTION.tabSwingDamp, th0 = t.th0, v0 = t.sign * MOTION.tabReleaseSpeed;
+  const wd = Math.sqrt(w * w - c * c), B = (v0 + c * th0) / wd;
+  // zero crossings: wd t = phi + pi/2 + k pi, with tan(phi) = B / th0. The tab rests from the Nth one on (Row 6).
+  const phi = Math.atan2(B, th0);
+  let k = 0, tz = 0, n = 0;
+  while (n < MOTION.tabStopCrossing && k < 20) { tz = (phi + Math.PI / 2 + k * Math.PI) / wd; if (tz > 0) n++; k++; }
+  if (dt >= tz) return 0;
+  return Math.exp(-c * dt) * (th0 * Math.cos(wd * dt) + B * Math.sin(wd * dt));
+}
+function springX(dt) { // damped spring, displacement left of the 'from' offset, zero start speed (Row 5)
+  const w = MOTION.springOmega, z = MOTION.springZeta, wd = w * Math.sqrt(1 - z * z);
+  return Math.exp(-z * w * dt) * (Math.cos(wd * dt) + (z * w / wd) * Math.sin(wd * dt));
+}
+function springLeft(dt) { // the most springX can still swing from dt on
+  const w = MOTION.springOmega, z = MOTION.springZeta, wd = w * Math.sqrt(1 - z * z);
+  return Math.exp(-z * w * dt) * Math.hypot(1, z * w / wd);
+}
+// Run-on distance after commit of the slider top and apex, in px from the release spot (Rows 10 to 12).
+function runDist(ms) {
+  const M = MOTION, t = ms / 1000, tau = M.runEaseInMs / 1000, tp = M.runPeakAtMs / 1000;
+  const P = x => M.runPeakSpeed * (x - tau * (1 - Math.exp(-x / tau)));
+  if (t <= tp) return P(t);
+  const v0 = M.runPeakSpeed * (1 - Math.exp(-tp / tau)), d = t - tp;
+  return P(tp) + v0 * d - 0.5 * M.runSlowdown * d * d;
+}
+const RUN_END = runDist(MOTION.runCutMs);   // how far the apex travels by the cut; a shorter pull is stretched to end here too
+
+function commit(now, instant) {
+  st.commitT = now;
+  st.mode = 'run';
+  const from = st.S;
+  // the run always ends at one spot (apex RUN_END px past restRefSliderTop), so a shorter pull is stretched
+  st.run = { t0: now, from, k: (RUN_END + MOTION.restRefSliderTop - from) / RUN_END };
+  if (instant) { st.mode = 'done'; canvas.style.visibility = 'hidden'; }
+}
+function release(frameNow, cancelled) {
+  const now = frameNow - MOTION.releaseLeadMs;   // the release happened during the last frame interval
+  st.pointerId = null;
+  const t = st.tab;
+  if (!reduced()) { t.mode = 'free'; t.th0 = holdDeg(frameNow); t.deg = t.th0; t.relT = now + MOTION.tabReleaseLag; }
+  else { t.mode = 'none'; t.deg = 0; }
+  if (!cancelled && st.S >= MOTION.commitSliderTop) { commit(now, reduced()); return; }
+  if (st.S - REST < 0.05) { st.mode = 'rest'; st.S = REST; return; }
+  if (reduced()) { st.mode = 'rest'; st.S = REST; return; }
+  st.mode = 'spring'; st.springT = now; st.springFrom = st.S - REST;
+}
+
+function update(now) {
+  const q = st.queue; st.queue = [];
+  for (const ev of q) {
+    if (ev[0] === 'down') {
+      const [, x, y] = ev; st.mode = 'drag'; st.grabDY = y - st.S; st.ptrY = y;
+      const side = x < CX - 2 ? -1 : 1;
+      st.tab = { mode: 'hold', grabT: now, table: Math.min(st.grabs, 1), sign: side, relT: 0, th0: 0, deg: 0 };
+      st.grabs++;
+      if (!('grab' in events)) events.grab = now;
+    } else if (ev[0] === 'move') { if (st.mode === 'drag') st.ptrY = ev[2]; }
+    else if (ev[0] === 'up' || ev[0] === 'cancel') {
+      if (st.mode === 'drag') {
+        st.S = clamp(st.ptrY - st.grabDY, REST, H);
+        if (!('release' in events)) events.release = now;
+        release(ev[3] ?? now, ev[0] === 'cancel');
+        if (!('commit' in events) && st.commitT !== null) events.commit = now;
+      } else st.pointerId = null;
+    }
+    else if (ev[0] === 'key') { st.S = REST; commit(now, reduced()); }
+  }
+  if (st.mode === 'drag') st.S = clamp(st.ptrY - st.grabDY, REST, H);
+  else if (st.mode === 'spring') {
+    const dt = (now - st.springT) / 1000;
+    if (dt > 1.2 || Math.abs(st.springFrom) * springLeft(dt) < MOTION.springRestPx) { st.mode = 'rest'; st.S = REST; } else st.S = REST + st.springFrom * springX(dt);
+    // back: the first time the spring brings the slider top to rest, between this step and the last one
+    if (!('back' in events) && st.S <= REST && last.S > REST) events.back = last.t + (now - last.t) * (last.S - REST) / (last.S - st.S);
+  } else if (st.mode === 'run') {
+    const ms = now - st.run.t0;
+    if (ms + MOTION.frameMs / 2 >= MOTION.runCutMs) { st.mode = 'done'; canvas.style.visibility = 'hidden'; }   // Row 13: cut on the frame nearest 284
+    else st.S = st.run.from + st.run.k * runDist(ms);
+  }
+  // tab
+  const t = st.tab;
+  if (t.mode === 'hold') t.deg = holdDeg(now);
+  else if (t.mode === 'free') { t.deg = swingDeg(now); if (now - t.relT > 1200 || (now > t.relT && t.deg === 0)) { t.mode = 'none'; t.deg = 0; } }   // the swing rests from its stop crossing
+  last.t = now; last.S = st.S;
+}
+function active(now) {
+  if (st.queue.length || st.mode === 'drag' || st.mode === 'spring' || st.mode === 'run') return true;
+  if (st.tab.mode === 'free' || st.tab.mode === 'hold') return true;
+  if (st.commitT !== null && now - st.commitT < MOTION.headerEndMs) return true;
+  return false;
+}
+
+/* ---------- drawing ----------
+   The cloth: write this frame's slide per row, slider top and tab angle into the field's uniforms. While the
+   engine's own loop runs it draws them next frame; while it is still (frozen by ?t=, or resting) ask for one redraw.
+   The screen behind shows through the gap: a polygon down the left edge's tooth tips and back up the right's. */
+function drawCloth(A, S, deg) {
+  const pts = [];
+  for (let i = 0; i < SLIDE_N; i++) {
+    const y = SLIDE_Y0 + i * SLIDE_STEP, o = slide(y, A);
+    U.uSlide[i] = o;
+    pts.push([y, Math.max(0, o - TOOTH_IN)]);
+  }
+  U.uS = S; U.uTab = deg;
+  const left = pts.map(([y, g]) => `${(CX - g).toFixed(2)}px ${y}px`);
+  const right = pts.reverse().map(([y, g]) => `${(CX + g).toFixed(2)}px ${y}px`);
+  behind.style.clipPath = `polygon(${left.concat(right).join(',')})`;
+  if (!window.__paint || window.__paint.motion?.() !== 'live') invalidate();
+}
+
+function render(now) {
+  const S = st.S, runMs = st.mode === 'run' ? now - st.run.t0 : 0;
+  if (st.mode !== 'done') drawCloth(apexOf(S, runMs), S, st.tab.deg);
+  else behind.style.clipPath = 'none';
+  renderHeader(now);
+}
+
+/* ---------- screen behind the cloth: logo, title, indicator ---------- */
+function logoRise(t) {                // Row 14: how far below its rest the logo sits, t ms since commit
+  const tau = Math.max(0, t - MOTION.logoRiseStartMs) / 1000, w = MOTION.logoRiseOmega;
+  return MOTION.logoRiseFrom * (1 + w * tau) * Math.exp(-w * tau);
+}
+// Row 20's grey level (0 to 255) as a mix of the home bar's two tokens: 240 is --homebar, 16 is --homebar-dim.
+const HOME_LIGHT = 240, HOME_DARK = 16;
+const homeColour = g => `color-mix(in srgb, var(--homebar) ${(100 * clamp((g - HOME_DARK) / (HOME_LIGHT - HOME_DARK), 0, 1)).toFixed(1)}%, var(--homebar-dim))`;
+function renderHeader(now) {
+  const run = st.commitT !== null;
+  const t = run ? (reduced() ? 1e6 : now - st.commitT) : -1;
+  // logo
+  if (!run || t <= MOTION.logoOpacity[0][0]) { logo.style.opacity = '0'; }
+  else {
+    const dy = logoRise(t), blur = fLogoBlur(t);
+    logo.style.opacity = fLogoOpacity(t).toFixed(3);
+    logo.style.transform = `translateY(${dy.toFixed(2)}px) scale(${fLogoScale(t).toFixed(4)})`;
+    logo.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : 'none';
+  }
+  // title
+  letters.forEach((el, i) => {
+    if (!run) { el.style.opacity = '0'; return; }
+    const u = clamp((t - (MOTION.titleFirstStartMs + MOTION.titleStaggerMs * i)) / MOTION.titleFadeMs, 0, 1);
+    const rise = 1 - clamp((t - (MOTION.titleFirstStartMs + MOTION.titleStaggerMs * i)) / MOTION.titleRiseMs, 0, 1);
+    el.style.opacity = (u * u).toFixed(3);
+    el.style.transform = `translateY(${(MOTION.titleRisePx * rise).toFixed(2)}px)`;
+    el.style.filter = u < 1 ? `blur(${(MOTION.titleBlurPx * (1 - u)).toFixed(2)}px)` : 'none';
+  });
+  // rainbow and clouds
+  bandEls.forEach((p, i) => {
+    const u = run ? clamp((t - MOTION.rainbowBandStartMs[i]) / (i ? MOTION.rainbowInnerDrawMs : MOTION.rainbowDrawMs), 0, 1) : 0;
+    p.style.strokeDashoffset = (1 - u).toFixed(4);
+  });
+  cloudsEl.setAttribute('opacity', run ? fClouds(t).toFixed(3) : '0');
+  // home indicator
+  if (!run) { homebar.style.background = 'var(--homebar)'; homebar.style.opacity = '1'; }
+  else {
+    const g = Math.round(fHomeGrey(t)), [f0, f1] = MOTION.homeFade;
+    homebar.style.background = homeColour(g);
+    homebar.style.opacity = (1 - clamp((t - f0) / (f1 - f0), 0, 1)).toFixed(3);
+  }
+}
+
+/* ---------- loop: capped time step, stops at rest ---------- */
+function frame(ts) {
+  raf = 0;
+  const dt = lastTs === null ? 0 : Math.min(ts - lastTs, MOTION.maxStep);
+  lastTs = ts; simNow += dt;
+  update(simNow); render(simNow);
+  if (active(simNow)) raf = requestAnimationFrame(frame); else lastTs = null;
+}
+
+/* ---------- fit to the window ---------- */
+function fit() {
+  const s = Math.min(1, innerWidth / W, innerHeight / H);
+  phone.style.setProperty('--fit', s.toFixed(4));
+}
+addEventListener('resize', fit); fit();
+
+render(0);
+if (reduced()) { /* still frame of the rest state: the first render above is it */ }
+
+/* ---------- the fixed clock (?seek) ----------
+   __seek(ms) re-runs the page from 0 to ms: update(t) at every whole 1/60 s step, then once for the
+   rest, and draws that frame. On the way it plays window.__input, the recorded pointer samples
+   [ms, x, y] or [ms, x, y, down] in page px. The pointer sits at the latest sample at or before t.
+   It is down there unless that sample's down is 0, and it is up after the last sample. So the state
+   at a time depends on the drag before it, as in the live page. */
+const FRAME = 1000 / 60;
+const seekPointer = 'seek';
+const nextFrame = (ms) => Math.ceil(ms / FRAME - 1e-9) * FRAME;   // the first whole frame at or after ms
+let cursor = 0, held = false;
+function feed(t, input) {             // plays the samples up to time t
+  for (; cursor < input.length && input[cursor][0] <= t + 1e-9; cursor++) {
+    const [ms, cx, cy, flag] = input[cursor];
+    const [x, y] = toScreen({ clientX: cx, clientY: cy });
+    const down = flag !== 0;
+    if (down && !held) press(seekPointer, x, y);
+    else if (down) move(seekPointer, x, y);
+    else if (held) lift(seekPointer, false, nextFrame(ms));
+    held = down;
+  }
+  const end = input.length ? input[input.length - 1][0] : 0;
+  if (held && cursor === input.length && t > end + 1e-9) { lift(seekPointer, false, nextFrame(end + 1e-6)); held = false; }
+}
+window.__seek = (ms) => {
+  st = JSON.parse(JSON.stringify(S0)); canvas.style.visibility = 'visible';
+  for (const k of Object.keys(events)) delete events[k];
+  last.t = 0; last.S = REST;
+  const input = Array.isArray(window.__input) ? window.__input : [];
+  cursor = 0; held = false;
+  let t = 0;
+  feed(t, input); update(t);
+  const n = Math.floor(ms / FRAME + 1e-9);
+  for (let i = 1; i <= n; i++) { t = (i * 1000) / 60; feed(t, input); update(t); }
+  if (ms - t > 1e-9) { t = ms; feed(t, input); update(t); }
+  simNow = t;
+  render(t);
+};
+/* The state read, from the page's own state: slider is the slider top, in px from the screen top;
+   gap is the gap's half width on the row 100 px from the screen top (0 while the gap is shut there):
+   the cloth edge less the teeth, which reach 3.5 px in and tilt with the edge as the field draws them.
+   The gap is what shows on the screen, so it stops at the screen's edges. logo is the logo's top edge,
+   in px from the screen top, as its rise and scale place it (at its start spot until it shows).
+   Events: grab (the frame that takes the first press), release (the frame that sees the first
+   release), back (the spring first brings the slider top to rest, between two steps) and commit
+   (the frame that sees the release that commits). */
+const GAP_ROW = 100;
+function gapAt(y, A) {
+  const slope = (slide(y + 3, A) - slide(y - 3, A)) / 6, a = Math.atan(slope);
+  const o = Math.max(0, slide(y, A) - TOOTH_IN * Math.cos(a) - TOOTH_H / 2 * Math.abs(Math.sin(a)));
+  return Math.max(0, Math.min(CX + o, W) - Math.max(CX - o, 0)) / 2;
+}
+const LOGO = { centerY: 105.1 + 59, half: 59 };   // the logo box: top 105.1, 118 px tall, scaled about its center
+function logoTop() {
+  const t = st.commitT === null ? 0 : reduced() ? 1e6 : simNow - st.commitT;
+  return LOGO.centerY + logoRise(t) - LOGO.half * fLogoScale(t);
+}
+window.__state = () => {
+  const open = st.mode === 'done' ? W / 2 : gapAt(GAP_ROW, apexOf(st.S, st.mode === 'run' ? simNow - st.run.t0 : 0));
+  return {
+    values: { slider: st.S, gap: open, logo: logoTop() },
+    events: { ...events },
+    units: { slider: 'px', gap: 'px', logo: 'px' },
+  };
+};
+
+// small probe so a test script can read the simulation (reads only)
+window.__zip = { get S() { return st.S; }, get mode() { return st.mode; }, get tab() { return st.tab.deg; }, get now() { return simNow; }, get commitT() { return st.commitT; }, apex: () => apexOf(st.S, st.mode === 'run' ? simNow - st.run.t0 : 0), painter };
+</script>
+</body>
+</html>

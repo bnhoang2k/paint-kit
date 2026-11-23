@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit burn</title>
+<!-- PLANTED FAULT (burn-glow-dark). A copy of test/pages/burn.html with exactly one change: the ember's level is 0 at
+     every query, so the ember lights nothing and only the scorch band's own colour marks the edge. It must fail the burn
+     law's (c) (Phase 2 Task 21). The rest of the page, its settings and its query options are burn.html's. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.25 0.03 50);
+    --accent: oklch(0.66 0.15 45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.32 0.02 260);
+      --ink: oklch(0.93 0.02 85);
+      --accent: oklch(0.72 0.14 45);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const q = new URLSearchParams(location.search);
+  const burn = fields.burn({ from: q.get("from") === "point" ? [0.5, 0.7] : "bottom", speed: 0.15, rag: 0.6, scorch: 1.2, startAt: q.get("wait") ? null : Number(q.get("start") ?? 0) });
+  window.burnStart = () => burn.start();
+  paint(document.querySelector("canvas"), {
+    seed: Number(q.get("seed") ?? 1),
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.5 }), burn],
+    materials: [materials.paper({ scorch: true })],
+    lights: [
+      lights.key({ dir: [-0.4, 0.5, 0.75], level: 0.9 }),
+      lights.ember({ field: burn, kelvin: [900, 1600], level: 0, reach: 0.25 }),
+      lights.ambient(0.15),
+    ],
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "id": "11-heat-tint",
+  "reference": {
+    "shelfKey": "none",
+    "title": "heated metal (Phase 2 spec, Wave 3): a steel bar banded from straw to blue by its temper colours, from the temper colour sources (study.md); builds from REFERENCE.md, with bar 10's pointer-as-light code and film-metal.html's steel film"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": ["--accent-warm", "--accent-cool"]
+  },
+  "detail": 0.6,
+  "seeds": [1, 2, 3],
+  "laws": ["highlight", "iridescence"],
+  "alive": { "rests": "The bar lies still on a still desk: nothing moves without the pointer. Film colour never moves with the clock (the iridescence law's (c)), and tempered steel holds its colours once cool" },
+  "flash": {
+    "pointer": [
+      { "t": 0, "x": 0.5, "y": 0.5 },
+      { "t": 0.5, "x": 1, "y": 0.5 },
+      { "t": 1.5, "x": 0, "y": 0.5 },
+      { "t": 2, "x": 0.5, "y": 0.5 }
+    ]
+  },
+  "beats": [
+    "A steel bar lies on a desk, heated at its top end: the oxide film is thickest there, and the temper bands run blue at the hot end, then purple, brown and straw toward the cold end, in that order",
+    "The bar's face is crowned across its width, so the key light's highlight is a stripe down its length that shows every band at once, and brushed grain along the bar streaks it",
+    "Moving the pointer moves the light: the key comes from a point above the pointer, so it turns off the eye and back; the highlight slides across the bar toward the light and the bands' hue shifts a little",
+    "No glow and no heat colour: tempering heat is far below a visible glow, so the colour is the thin film's alone",
+    "Nothing moves without the pointer"
+  ]
+}

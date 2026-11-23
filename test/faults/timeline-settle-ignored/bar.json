@@ -1,0 +1,11 @@
+{
+  "id": "timeline-settle-ignored",
+  "reference": { "shelfKey": "test-fault", "title": "PLANTED FAULT (E2, bar 03 fix round 1): test/pages/timeline.html with engine fault 'stateless-settle-ignored'. The page's timeline declares 60 ticks and this bar.json the same 1 s, so the still check fails it: the engine reports no settle time." },
+  "palette": { "ground": "--ground", "ink": "--ink", "accents": ["--accent"] },
+  "detail": 0.5,
+  "seeds": [1],
+  "laws": ["relief"],
+  "alive": { "t0": 0.5, "t1": 1.5 },
+  "settle": 1,
+  "beats": []
+}

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit shadow ink</title>
+<!-- Text ink is not height (Phase 2 Task 7, Review Focus 5): a page whose only marks are `data-paint-ink` text, on a
+     sheet with no field that writes height, under a key light that casts a shadow. Printed ink lies flat on the
+     sheet, so the light must cast no shadow from it: test/pages/shadow.test.ts asserts the shadow law reads a mask
+     share under relight.shadowNone here. Its planted fault test/faults/shadow-reads-ink is this page with the engine
+     fault 'shadow-reads-ink' (the shadow march reads the sheet's ink channel as height). The key is the one on
+     test/pages/shadow.html. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.28 0.03 260);
+    --accent: oklch(0.7 0.1 60);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.27 0.02 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent: oklch(0.62 0.09 55);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  main { position: relative; padding: 48px 64px; max-width: 760px; }
+  h1 { margin: 0 0 24px; font: 700 72px/1.05 Georgia, "Times New Roman", serif; }
+  p { margin: 0 0 16px; font: 400 26px/1.4 Georgia, "Times New Roman", serif; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<main>
+  <h1 data-paint-ink>Printed, not raised</h1>
+  <p data-paint-ink>Ink lies flat on the sheet. A light that casts shadows from the sheet's height finds nothing here to block it, so these words throw no shadow at any angle.</p>
+</main>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const seed = Number(new URLSearchParams(location.search).get("seed") ?? 1);
+  paint(document.querySelector("canvas"), {
+    seed,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.text()],
+    materials: [materials.matte({ tone: 0 })],
+    lights: [lights.key({ dir: [-0.6, 0.55, 0.65], level: 0.85, shadow: { soft: 0.8 } }), lights.ambient(0.2)],
+  });
+</script>
+</body>
+</html>

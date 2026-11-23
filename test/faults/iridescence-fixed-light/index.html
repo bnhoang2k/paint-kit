@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit foil</title>
+<!-- PLANTED FAULT (iridescence-fixed-light: engine fault 'spec-fixed-light'). A copy of test/pages/foil.html with exactly one change: the key light's specular direction, which the foil's grating reads (lights/basic.ts specDir, shade.ts), is held at its test position 0, so the grating's colour no longer follows the key while the key's diffuse light still moves. It fails the relight check's iridescence law by its condition (a), the key move
+     (test/pages/foil.test.ts).
+     The foil test page (Phase 2 Task 13): a foil panel on a matte desk under one key light. The panel has two groove
+     regions: the left half's grooves run straight up the page, the right half's 30 degrees off that (builder: two
+     directions far enough apart to split the colour, both near enough to square with the key's sweep across the page
+     that the key reaches both). The desk is flat and still (no fields.sheet: its drift would move the panel with the
+     clock, and the test of a foil that holds when only time passes needs a surface that holds). The surface
+     tilts only through the hook's setTilt (drive "none"), so a test can turn the view with nothing else moving.
+     URL: ?pull= (default 0.3, builder: enough pull that the page's palette shows in the foil without losing the
+     line colour; the look review sets bar 10's), ?target=nearest|ground (default nearest), ?spacing= in um (default
+     1.5, the middle of the 1.0 to 2.0 um that holo film is sold at), ?orders= (default 2).
+     foil.test.ts reads the two regions at the boxes in window.__foil (CSS px). -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.28 0.03 260);
+    --accent-a: oklch(0.66 0.13 30);
+    --accent-b: oklch(0.55 0.11 200);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.27 0.03 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent-a: oklch(0.7 0.12 35);
+      --accent-b: oklch(0.62 0.1 205);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script>globalThis.__PAINT_TEST_FAULT = 'spec-fixed-light';</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const q = new URLSearchParams(location.search);
+  const num = (k, d) => (q.has(k) && Number.isFinite(Number(q.get(k))) ? Number(q.get(k)) : d);
+  const seed = num("seed", 1) || 1;
+  // The panel: centred, 0.84 x 0.5 short-side units with 0.02 corners, raised 0.004 with a rim over its outer 0.01
+  // (builder: a panel that reads as a laid-on sheet under the key, as tone.html's card).
+  const PANEL = { half: [0.42, 0.25], corner: 0.02, lift: 0.004, bevel: 0.01 };
+  // Groove directions, degrees anticlockwise from +x: left half 90 (up the page), right half 60.
+  const GROOVE = [90, 60];
+  const rad = (d) => (d * Math.PI) / 180;
+  const panel = fields.shape({
+    writes: ["height", "coverage", "slot", "direction"],
+    uniforms: {
+      uHalf: PANEL.half,
+      uCorner: PANEL.corner,
+      uLift: PANEL.lift,
+      uBevel: PANEL.bevel,
+      uGrooveA: [Math.cos(rad(GROOVE[0])), Math.sin(rad(GROOVE[0]))],
+      uGrooveB: [Math.cos(rad(GROOVE[1])), Math.sin(rad(GROOVE[1]))],
+    },
+    glsl: /* glsl */ `
+uniform vec2 uHalf, uGrooveA, uGrooveB;
+uniform float uCorner, uLift, uBevel;
+float boxSd(vec2 p, vec2 b, float r) { vec2 d = abs(p) - b + r; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r; }
+vec4 field(vec2 uv, vec2 q) {
+  float d = boxSd(q, uHalf, uCorner);
+  if (d > 0.0) return vec4(0.0, 1.0, 0.0, 0.0);
+  float rim = smoothstep(-uBevel, 0.0, d);
+  return vec4(uLift * (1.0 - rim * rim), 1.0, 0.0, 1.0);
+}
+vec2 fieldDir(vec2 uv, vec2 q) {
+  if (boxSd(q, uHalf, uCorner) > 0.0) return vec2(0.0);
+  return q.x < 0.0 ? uGrooveA : uGrooveB;
+}
+`,
+  });
+
+  const target = q.get("target") === "ground" ? "ground" : "nearest";
+  const palette = fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent-a", "--accent-b"] });
+  paint(document.querySelector("canvas"), {
+    seed,
+    palette,
+    fields: [panel],
+    materials: [materials.matte({ tone: 0 }), materials.foil({ spacing: num("spacing", 1.5), orders: num("orders", 2), pull: num("pull", 0.3), pullTarget: target })],
+    lights: [lights.key({ dir: [0.55, 0.05, 0.83], level: 0.85 }), lights.ambient(0.25)],
+    tilt: { max: 20, drive: "none" },
+  });
+
+  // Where the test reads, in CSS px of the canvas: the middle of each groove region, well inside the rim and the seam.
+  const box = (cx, cy, hw, hh) => {
+    const side = Math.min(innerWidth, innerHeight);
+    return { x: innerWidth / 2 + (cx - hw) * side, y: innerHeight / 2 - (cy + hh) * side, w: 2 * hw * side, h: 2 * hh * side };
+  };
+  // `ramp()`: the page's ramp as the engine reads it now, for the test's pull reading.
+  window.__foil = { a: box(-0.21, 0, 0.15, 0.18), b: box(0.21, 0, 0.15, 0.18), panel: box(0, 0, 0.4, 0.23), ramp: () => palette.read() };
+</script>
+</body>
+</html>

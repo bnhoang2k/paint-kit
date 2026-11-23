@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit film on metal</title>
+<!-- PLANTED FAULT (film-clock: engine fault 'film-clock'). A copy of test/pages/film-metal.html with exactly one change: the OPD cycles on the paint clock. Size: 120 nm a second, foil's clock rate (glsl/grating.ts, iridescence-clock). It must fail: (c) (task-18-law-design.md, "Planted faults").
+     The thin film on a metal base (Phase 2 Task 18): a copy of film.html with base "metal", so the film's second
+     reflection is off iron (materials/film.ts). The steel page is this page at ?range=26,54&ior=2.343, the settled
+     steel values (task-18-law-design.md). Two film panels on a matte desk under one key light. The film's thickness
+     runs along the sheet's param channel: the left panel runs param 0 to 1 bottom to top, the right panel 1 to 0, so each
+     thickness sits at two far-apart places. The desk is flat and still, and no field reads the clock.
+     Cited values: thickness 100 to 400 nm and index 1.3 are glTF KHR_materials_iridescence's defaults.
+     Builder values, set before any reading (task-18-law-design.md, "What test/pages/film.html must contain"):
+     - PANEL.x, PANEL.half: two panels centred at x = -0.24 and +0.24, each 0.36 wide and 0.7 tall.
+     - PANEL.crown 0.0615: the dome's height. Its slope across x reaches 2 x 0.0615 / 0.18 = 0.68 (34 degrees), so the
+       lobe finds normals at the half vector, about 17 degrees off the eye at the key's place and 32 after a 30-degree
+       turn, and the dome stays inside the 8-bit sheet's +-0.0625.
+     - PANEL.fall 0.0175: the dome's fall along y. Its slope there reaches 2 x 0.0175 / 0.35 = 0.1. It is added to the
+       height, so every row keeps the full slope across x and every thickness can reach the lobe.
+     - pull 0.3: foil.html's builder pull.
+     URL: ?seed=, ?range=a,b in nm (thickness at param 0 and 1), ?ior=, ?pull=.
+     film.test.ts reads the ramps at the boxes in window.__film (CSS px). -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.28 0.03 260);
+    --accent-a: oklch(0.66 0.13 30);
+    --accent-b: oklch(0.55 0.11 200);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.27 0.03 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent-a: oklch(0.7 0.12 35);
+      --accent-b: oklch(0.62 0.1 205);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script>globalThis.__PAINT_TEST_FAULT = 'film-clock';</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const q = new URLSearchParams(location.search);
+  const num = (k, d) => (q.has(k) && Number.isFinite(Number(q.get(k))) ? Number(q.get(k)) : d);
+  const seed = num("seed", 1) || 1;
+  const pair = (k, d) => {
+    const v = (q.get(k) ?? "").split(",").map(Number);
+    return v.length === 2 && v.every(Number.isFinite) ? v : d;
+  };
+  const PANEL = { x: 0.24, half: [0.18, 0.35], crown: 0.0615, fall: 0.0175 };
+  const panels = fields.shape({
+    writes: ["height", "coverage", "slot", "param"],
+    uniforms: { uPanelX: PANEL.x, uHalf: PANEL.half, uCrown: PANEL.crown, uFall: PANEL.fall },
+    glsl: /* glsl */ `
+uniform vec2 uHalf;
+uniform float uPanelX, uCrown, uFall;
+// This point in its panel's own frame, -1..1 on each axis.
+vec2 panelAt(vec2 q) { return vec2(q.x - (q.x < 0.0 ? -uPanelX : uPanelX), q.y) / uHalf; }
+bool inPanel(vec2 p) { return abs(p.x) <= 1.0 && abs(p.y) <= 1.0; }
+vec4 field(vec2 uv, vec2 q) {
+  vec2 p = panelAt(q);
+  if (!inPanel(p)) return vec4(0.0, 1.0, 0.0, 0.0);
+  return vec4(uCrown * (1.0 - p.x * p.x) - uFall * p.y * p.y, 1.0, 0.0, 1.0);
+}
+float fieldParam(vec2 uv, vec2 q) {
+  vec2 p = panelAt(q);
+  if (!inPanel(p)) return 0.0;
+  float up = clamp(0.5 + 0.5 * p.y, 0.0, 1.0);
+  return q.x < 0.0 ? up : 1.0 - up;
+}
+`,
+  });
+
+  const palette = fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent-a", "--accent-b"] });
+  paint(document.querySelector("canvas"), {
+    seed,
+    palette,
+    fields: [panels],
+    materials: [
+      materials.matte({ tone: 0 }),
+      materials.film({ range: pair("range", [100, 400]), ior: num("ior", 1.3), base: "metal", pull: num("pull", 0.3), pullTarget: "nearest" }),
+    ],
+    lights: [lights.key({ dir: [0.55, 0.05, 0.83], level: 0.85 }), lights.ambient(0.25)],
+    tilt: { max: 20, drive: "none" },
+  });
+
+  // Where the test reads, in CSS px of the canvas: each panel whole, param 0 and 1 at its bottom and top edges.
+  // `ramp()`: the page's ramp as the engine reads it now, for the test's pull reading.
+  const box = (cx, cy, hw, hh) => {
+    const side = Math.min(innerWidth, innerHeight);
+    return { x: innerWidth / 2 + (cx - hw) * side, y: innerHeight / 2 - (cy + hh) * side, w: 2 * hw * side, h: 2 * hh * side };
+  };
+  window.__film = { ramp: () => palette.read(), ramps: [box(-PANEL.x, 0, ...PANEL.half), box(PANEL.x, 0, ...PANEL.half)] };
+</script>
+</body>
+</html>

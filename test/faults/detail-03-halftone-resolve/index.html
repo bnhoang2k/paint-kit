@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- PLANTED FAULT (detail-03-halftone-resolve: engine fault detail-dead: the detail dial reaches nothing). A copy of bars/03-halftone-resolve/index.html with one planted fault; test/pages/faults.test.ts asserts that it fails detail at every seed in its bar.json. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Halftone resolve</title>
+<!-- Bar 03, halftone resolve (from Brandmelder; study.md). A paper sheet under a key light, and a plate printed on it
+     in one ink as a halftone grid (fields.halftone). Pictures arrive two ways and hold: the first steps coarse to
+     fine (three grids, each twice as fine), the next ones show as a pale dot field and darken. Every number in
+     TIMELINE comes from study.md (Source: frames); notes.md says why for each of the rest.
+     The pictures have no image file and no colour: each is a tone map (0 paper .. 1 solid ink) computed from page
+     shapes into a canvas, seeded, so the dots print in the live ink token in either scheme.
+     `window.painter` is the painter; `window.halftoneAt(t)` gives the plate's state at time t. -->
+<style>
+  :root {
+    --ground: oklch(0.95 0.025 95);
+    --ink: oklch(0.24 0.05 265);
+    --accent: oklch(0.72 0.11 55);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.23 0.03 265);
+      --ink: oklch(0.93 0.03 90);
+      --accent: oklch(0.62 0.1 55);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* The plate label, bottom left, kept clear of the plate: on a wide page the plate starts at 60vw - 36vh
+     (plateRect), so the label stops 24 px short of it. On a tall page the plate sits above it. */
+  .caption {
+    position: fixed; left: 32px; bottom: 28px; margin: 0; max-width: max(6em, calc(60vw - 36vh - 56px));
+    font: 600 16px/1.3 Georgia, "Times New Roman", serif;
+  }
+  @media (orientation: portrait) { .caption { max-width: none; right: 32px; } }
+</style>
+<script>globalThis.__PAINT_TEST_FAULT = 'detail-dead';</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<p class="caption" data-paint-ink data-ui-paint-text>Printed in one ink</p>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // The timeline, seconds within one cycle. Source: frames (study.md, Beats).
+  const TIMELINE = {
+    cycle: 5.34, // three pictures at the 1.67 s cadence after the 0.35 s empty lead-in (0.35 + 3 x 1.67 ~ 5.34)
+    empty: 0.35, // the plate is empty paper until the first dots
+    steps: [[0.35, 4], [0.5, 2], [0.6, 1]], // [start, cell as a multiple of the fine cell]: pitch ratio 2 per step
+    fullAt: 0.75, // the first picture's dots reach full tone, then hold
+    arrivals: [2.0, 3.67], // the next pictures, at the full grid, pale then dark
+    darken: 0.2, // pale to dark
+    across: 58, // fine cells across the plate
+  };
+  // Dot strength. FULL under 1: at grow 1 the darkest dots overlap (a deferred halftone minor); at 0.9 the darkest
+  // tone (0.92) prints dots that just touch, as the reference's dark side reads near solid. PALE is where a later
+  // picture starts, a pale field read off bm-top (study.md). Both are notes.md numbers.
+  const FULL = 0.9;
+  const PALE = 0.2;
+  const ANGLE = 0; // the grid runs with the plate's edges (study.md)
+  // Reduced motion shows the first picture as it holds (one still frame of a whole picture, no arrival): the plate
+  // declares its settle time at TIMELINE.fullAt, where halftoneAt gives { pic 0, step 1, grow FULL }, and the engine
+  // draws that frame once and rests. The page never reads prefers-reduced-motion.
+  const SETTLE_TICKS = Math.round(TIMELINE.fullAt * 60); // 0.75 s = 45 fixed 1/60 s ticks
+
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  const easeOut = (x) => 1 - (1 - clamp01(x)) ** 2;
+  const easeIn = (x) => clamp01(x) ** 2;
+
+  // The plate's state at time t: which picture, the cell (a multiple of the fine cell) and grow; null while empty.
+  // It depends on t alone, so setTime(t) and a live frame at t print the same plate.
+  function halftoneAt(t) {
+    const T = TIMELINE;
+    const c = ((t % T.cycle) + T.cycle) % T.cycle;
+    if (c < T.empty) return null;
+    let pic = 0;
+    for (let i = 0; i < T.arrivals.length; i++) if (c >= T.arrivals[i]) pic = i + 1;
+    if (pic === 0) {
+      const step = T.steps.filter(([at]) => c >= at).pop()[1];
+      // The first picture grows from nothing, slowly at first: its coarse step shows tiny dots (study.md: step 1 dots
+      // about an eighth of the pitch across), the middle step mid dots, the fine step full ones.
+      return { pic, step, grow: FULL * easeIn((c - T.empty) / (T.fullAt - T.empty)) };
+    }
+    return { pic, step: 1, grow: FULL * (PALE + (1 - PALE) * easeOut((c - T.arrivals[pic - 1]) / T.darken)) };
+  }
+
+  // The plate in CSS px: a square right of centre on a wide page, above centre on a tall one, clear of the caption.
+  function plateRect(w, h) {
+    if (w >= h) {
+      const s = 0.72 * h;
+      return { x: 0.6 * w - s / 2, y: 0.5 * h - s / 2, s };
+    }
+    const s = 0.84 * w;
+    return { x: 0.5 * w - s / 2, y: 0.42 * h - s / 2, s };
+  }
+
+  // Seeded hash noise for the pictures' own texture (value noise, 0..1).
+  const hash = (x, y, k) => {
+    const s = Math.sin(x * 127.1 + y * 311.7 + k * 74.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  function vnoise(x, y, k) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    const fx = x - ix, fy = y - iy;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const a = hash(ix, iy, k), b = hash(ix + 1, iy, k), c = hash(ix, iy + 1, k), d = hash(ix + 1, iy + 1, k);
+    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+  }
+  // A lit ball: tone 0 where the light faces it, rising to `dark` on its far side. (u, v) in the ball's own units.
+  function ballTone(u, v, lx, ly, dark) {
+    const r2 = u * u + v * v;
+    const z = Math.sqrt(Math.max(0, 1 - r2));
+    const lz = Math.sqrt(Math.max(0, 1 - lx * lx - ly * ly));
+    const lambert = Math.max(0, u * lx + v * ly + z * lz);
+    return dark * (1 - lambert);
+  }
+
+  // The three pictures, each a tone function over the plate (u, v in 0..1, v down), with seeded parts made from
+  // `rand` (the field's seeded stream). Tone is ink coverage: 0 bare paper, 1 solid ink.
+  const PICTURES = [
+    // A moon: a ball lit from a seeded side, with seeded craters and dark seas.
+    (rand) => {
+      const a = (-0.75 + rand() * 0.5) * Math.PI; // light from the upper left to the upper right
+      const lx = 0.8 * Math.cos(a), ly = 0.8 * Math.sin(a);
+      const craters = Array.from({ length: 7 }, () => ({ u: rand() * 1.4 - 0.7, v: rand() * 1.4 - 0.7, r: 0.05 + rand() * 0.11 }));
+      const k = rand() * 50;
+      return (u, v) => {
+        const x = (u - 0.5) / 0.42, y = (v - 0.5) / 0.42;
+        if (x * x + y * y > 1) return 0;
+        let tone = ballTone(x, y, lx, ly, 0.92);
+        const sea = vnoise(x * 2.2 + k, y * 2.2, 1);
+        tone += 0.28 * clamp01((sea - 0.5) * 3);
+        for (const c of craters) {
+          const d = Math.hypot(x - c.u, y - c.v) / c.r;
+          if (d < 1) tone += d > 0.75 ? 0.3 : 0.12;
+        }
+        return clamp01(tone);
+      };
+    },
+    // Hills under a sun: a sky paling to the horizon, a printed sun, three ridges darker toward the front.
+    (rand) => {
+      const ridges = [0.48, 0.62, 0.76].map((base, i) => ({ base, a: [rand(), rand(), rand()].map((p) => p * 6.283), tone: 0.38 + i * 0.24 }));
+      const sun = { u: 0.25 + rand() * 0.5, v: 0.22 + rand() * 0.12, r: 0.09 };
+      return (u, v) => {
+        let tone = 0.04 + 0.22 * clamp01(v / 0.6);
+        if (Math.hypot(u - sun.u, v - sun.v) < sun.r) tone = 0.5;
+        for (const r of ridges) {
+          const top = r.base + 0.05 * Math.sin(u * 5 + r.a[0]) + 0.03 * Math.sin(u * 11 + r.a[1]) + 0.015 * Math.sin(u * 23 + r.a[2]);
+          if (v > top) tone = r.tone + 0.08 * clamp01((v - top) / 0.2);
+        }
+        return clamp01(tone);
+      };
+    },
+    // A still life: three balls on a table, each with its shadow, under a light from a seeded side.
+    (rand) => {
+      const side = rand() < 0.5 ? -1 : 1;
+      const lx = 0.55 * side, ly = -0.6;
+      const table = 0.66;
+      const balls = [0.25, 0.5, 0.75].map((u) => {
+        const r = 0.08 + rand() * 0.08;
+        return { u: u + (rand() - 0.5) * 0.08, r, v: table + 0.06 - r };
+      });
+      return (u, v) => {
+        let tone = v < table ? 0.1 + 0.08 * (v / table) : 0.45 + 0.25 * clamp01((v - table) / 0.34);
+        for (const b of balls) {
+          const sx = (u - (b.u - side * b.r * 0.9)) / (b.r * 1.3), sy = (v - (b.v + b.r * 0.95)) / (b.r * 0.32);
+          if (v > table && sx * sx + sy * sy < 1) tone = 0.9;
+        }
+        for (const b of balls) {
+          const x = (u - b.u) / b.r, y = (v - b.v) / b.r;
+          if (x * x + y * y < 1) tone = 0.08 + ballTone(x, y, lx, ly, 0.85);
+        }
+        return clamp01(tone);
+      };
+    },
+  ];
+
+  // Draws one picture's tone map over a canvas the sheet's shape: the plate holds the picture, the rest is paper.
+  // Stored as grey levels (luminance 1 - tone), which is what fields.halftone reads; no colour is involved.
+  function toneCanvas(tone, cssW, cssH) {
+    const scale = 720 / Math.max(cssW, cssH);
+    const w = Math.max(1, Math.round(cssW * scale)), h = Math.max(1, Math.round(cssH * scale));
+    const plate = plateRect(cssW, cssH);
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const g = c.getContext("2d");
+    const img = g.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      const v = (y / scale - plate.y) / plate.s;
+      for (let x = 0; x < w; x++) {
+        const u = (x / scale - plate.x) / plate.s;
+        const k = u >= 0 && u <= 1 && v >= 0 && v <= 1 ? tone(u, v) : 0;
+        const i = (y * w + x) * 4;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.round(255 * (1 - k));
+        img.data[i + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+
+  // The plate as one field: one fields.halftone per picture, each made once with `cell` and `grow` as functions of t
+  // (read from halftoneAt at every draw, set as uniforms), and at each draw the plate prints the picture halftoneAt(t)
+  // names. So an arrival compiles no shader and uploads no texture: each picture is uploaded once, at init (and again
+  // after a resize, which changes the picture's shape). A draw depends on t alone, so the field keeps no state:
+  // setTime(t) draws it once at t, with no replay from tick 0, and reduced motion draws it once at its settle time.
+  function plate() {
+    return {
+      kind: "points",
+      writes: ["height", "ink"],
+      init(gl, ctx) {
+        const tones = PICTURES.map((make) => make(ctx.rand));
+        const cssSize = () => [ctx.size.w / ctx.size.dpr, ctx.size.h / ctx.size.dpr];
+        const fine = () => plateRect(...cssSize()).s / TIMELINE.across;
+        const cell = (t) => fine() * (halftoneAt(t)?.step ?? 1);
+        const grow = (t) => halftoneAt(t)?.grow ?? 0;
+        const make = () => {
+          const [w, h] = cssSize();
+          return tones.map((tone) => fields.halftone({ source: toneCanvas(tone, w, h), cell, angle: ANGLE, grow }).init(gl, ctx));
+        };
+        let rts = make();
+        let stale = false;
+        return {
+          stateful: false,
+          settleTicks: SETTLE_TICKS,
+          draw(sheet, t, dt) {
+            const s = halftoneAt(t);
+            if (!s) return;
+            if (stale) {
+              rts.forEach((rt) => rt.dispose());
+              rts = make();
+              stale = false;
+            }
+            rts[s.pic].draw(sheet, t, dt);
+          },
+          resize() {
+            stale = true;
+          },
+          dispose() {
+            rts.forEach((rt) => rt.dispose());
+            rts = [];
+          },
+        };
+      },
+    };
+  }
+
+  window.halftoneAt = halftoneAt;
+  window.painter = paint(document.querySelector("canvas"), {
+    seed: 1, // ?seed= overrides it (the engine reads the URL)
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.45 }), plate(), fields.text()],
+    materials: [materials.paper()],
+    lights: [lights.key({ dir: [-0.7, 0.6, 0.4], level: 0.85 }), lights.ambient(0.15)],
+  });
+</script>
+</body>
+</html>

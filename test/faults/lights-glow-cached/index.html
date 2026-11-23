@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit fault: cached glow</title>
+<!-- Palette fault (check-fix (b) round 3, the panel's cheat ii): lights-overhead.html whose glow is wrapped in page code by a custom Light that caches its uniforms at the first resolve, so the glow keeps the accents it saw first. relight never swaps tokens, so only palette can catch it. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.28 0.03 260);
+    --accent: oklch(0.66 0.15 25);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.32 0.02 260);
+      --ink: oklch(0.93 0.02 85);
+      --accent: oklch(0.72 0.14 30);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  h1 { position: relative; margin: 0; padding: 16px 24px; font: 600 20px/1.2 system-ui, sans-serif; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<h1>A lamp and a glow</h1>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // The fault: a custom Light in the real glow's place. Its colour is the accent from the ramp it is first
+  // resolved against, kept for good, so a token swap never reaches it (relight never swaps tokens).
+  const real = lights.glow({ at: [0.15, 0.8], radius: 0.2, level: 0.9, hues: "accents" });
+  let cached = null;
+  const glow = {
+    ...real,
+    resolve(ramp) {
+      cached ??= { at: real.uniforms.at, radius: real.uniforms.radius, level: real.uniforms.level, col: ramp.stops[2] };
+      return cached;
+    },
+    glsl: /* glsl */ `
+uniform vec2 u_$_at;
+uniform float u_$_radius, u_$_level;
+uniform vec3 u_$_col;
+LightSum light_$(Surf s, MatOut m) {
+  vec2 sc = uSheetSize / min(uSheetSize.x, uSheetSize.y);
+  vec2 c = vec2((u_$_at.x - 0.5) * sc.x, (0.5 - u_$_at.y) * sc.y);
+  vec2 rel = (s.q - c) / u_$_radius;
+  float r2 = dot(rel, rel);
+  float f = r2 < 1.0 ? (1.0 - r2) * (1.0 - r2) : 0.0;
+  vec3 lab = _toOklab(u_$_col);
+  lab.x = 0.8;
+  LightSum r;
+  r.diffuse = max(_fromOklab(lab), 0.0) / 0.512 * (u_$_level * f);
+  r.spec = vec3(0.0); // not-colour: a glow has no highlight
+  return r;
+}
+`,
+  };
+
+  paint(document.querySelector("canvas"), {
+    seed: 1,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.5 })],
+    materials: [materials.matte()],
+    lights: [
+      lights.lamp({ at: [0.5, 0.5, 0.6], aim: [0.5, 0.5, 0], cone: 20, soft: 6, level: 1.1, kelvin: 3000 }),
+      glow,
+      lights.ambient(0.12),
+    ],
+  });
+</script>
+</body>
+</html>

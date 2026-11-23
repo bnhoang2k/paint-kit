@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit tone</title>
+<!-- PLANTED FAULT (tone-split-none). A copy of test/pages/tone.html with exactly one change: the card's tone is 0,
+     the desk's, so the two surfaces share one colour (no split). tone.test.ts asserts its split is under tone.minSplit.
+     Surface tone (Phase 2 Task 6): a card on a desk, two surfaces in two tones from one palette. The desk is matte
+     at tone 0 (the ground token) on a gently warped sheet; the card is paper at tone 0.5 (the ramp's middle stop,
+     which is the page's one accent), a raised slab with a bevelled rim, so the key light shows its edge.
+     test/pages/tone.test.ts reads the card and the desk at the boxes in window.__tone (CSS px). -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.28 0.03 260);
+    --accent: oklch(0.62 0.12 35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.25 0.02 260);
+      --ink: oklch(0.92 0.02 85);
+      --accent: oklch(0.68 0.11 40);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  const seed = Number(new URLSearchParams(location.search).get("seed") ?? 1);
+  // The card: centred, 0.72 x 0.44 short-side units with 0.03 corners, raised 0.006 with a rim that falls over its
+  // outer 0.012 (builder's choice: a card that reads as a card under one key light, not a measured value).
+  const CARD = { half: [0.36, 0.22], corner: 0.03, lift: 0.006, bevel: 0.012 };
+  const card = fields.shape({
+    writes: ["height", "slot"],
+    uniforms: { uHalf: CARD.half, uCorner: CARD.corner, uLift: CARD.lift, uBevel: CARD.bevel },
+    glsl: /* glsl */ `
+uniform vec2 uHalf;
+uniform float uCorner, uLift, uBevel;
+float boxSd(vec2 p, vec2 b, float r) { vec2 d = abs(p) - b + r; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r; }
+vec4 field(vec2 uv, vec2 q) {
+  float d = boxSd(q, uHalf, uCorner);
+  if (d > 0.0) return vec4(0.0, 1.0, 0.0, -1.0);
+  float rim = smoothstep(-uBevel, 0.0, d);
+  return vec4(uLift * (1.0 - rim * rim), 1.0, 0.0, 1.0);
+}
+`,
+  });
+
+  paint(document.querySelector("canvas"), {
+    seed,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.4 }), card],
+    materials: [materials.matte({ tone: 0 }), materials.paper({ tone: 0 })],
+    lights: [lights.key({ dir: [-0.6, 0.55, 0.65], level: 0.85 }), lights.ambient(0.2)],
+  });
+
+  // Where the test reads, in CSS px of the canvas: the card's middle (well inside its rim) and the desk beside it.
+  const box = (cx, cy, hw, hh) => {
+    const side = Math.min(innerWidth, innerHeight);
+    return { x: innerWidth / 2 + (cx - hw) * side, y: innerHeight / 2 - (cy + hh) * side, w: 2 * hw * side, h: 2 * hh * side };
+  };
+  window.__tone = { card: box(0, 0, 0.24, 0.12), desk: box(-(CARD.half[0] + 0.2), 0, 0.12, 0.2) };
+</script>
+</body>
+</html>

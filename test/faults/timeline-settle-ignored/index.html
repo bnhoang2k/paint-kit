@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit fault timeline-settle-ignored</title>
+<!-- PLANTED FAULT (timeline-settle-ignored: engine fault 'stateless-settle-ignored'). A copy of test/pages/timeline.html
+     with exactly one change: the engine reads settle times from stateful fields only, so this page's stateless
+     timeline gets none and reduced motion rests on its first live frame. The reduced-motion settle test in
+     test/pages/timeline.test.ts fails on it, and so does the still check: its bar.json declares the page's 1 s. -->
+<!-- The stateless settle test page: a paper sheet and one timeline field, a bump that rises over the first second,
+     holds to 1.5 s, then sinks to 2.5 s. A frame depends on t alone (the field keeps no state), and the field
+     declares a settle time of SETTLE_TICKS (1 s, where the bump holds at full height), so under reduced motion the
+     engine draws the frame at 1 s once and rests. test/pages/timeline.test.ts reads SETTLE_TICKS; change both
+     together. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.03 250);
+    --ink: oklch(0.3 0.04 255);
+    --accent: oklch(0.62 0.13 45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.25 0.03 255);
+      --ink: oklch(0.92 0.02 250);
+      --accent: oklch(0.7 0.12 50);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script>globalThis.__PAINT_TEST_FAULT = 'stateless-settle-ignored';</script>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+  const SETTLE_TICKS = 60; // 1 s: the bump has risen and holds
+  const bump = fields.shape({
+    writes: ["height"],
+    glsl: /* glsl */ `
+      vec4 field(vec2 uv, vec2 q) {
+        float rise = smoothstep(0.0, 1.0, uTime) * (1.0 - smoothstep(1.5, 2.5, uTime));
+        return vec4(0.05 * rise * exp(-dot(q, q) * 6.0), 1.0, 0.0, 0.0);
+      }`,
+  });
+  // The field as a stateless timeline with a settle time.
+  const timeline = {
+    ...bump,
+    init(gl, ctx) {
+      return { ...bump.init(gl, ctx), stateful: false, settleTicks: SETTLE_TICKS };
+    },
+  };
+  window.painter = paint(document.querySelector("canvas"), {
+    seed: 1,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.sheet({ warp: 0.4 }), timeline],
+    materials: [materials.matte()],
+    lights: [lights.key({ dir: [-0.7, 0.6, 0.6], level: 0.85 }), lights.ambient(0.15)],
+  });
+</script>
+</body>
+</html>

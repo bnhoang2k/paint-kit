@@ -1,0 +1,32 @@
+{
+  "id": "holo-sticker",
+  "reference": {
+    "shelfKey": "none",
+    "title": "A holo sticker on a notebook (a person's request); copies bar 10-foil-card"
+  },
+  "palette": {
+    "ground": "--ground",
+    "ink": "--ink",
+    "accents": ["--sticker", "--rule", "--margin"]
+  },
+  "detail": 0.6,
+  "seeds": [1, 2, 3],
+  "laws": ["relief", "shadow", "iridescence"],
+  "alive": { "rests": "The sticker lies still on a still notebook page: nothing moves without the pointer, and foil colour never moves with the clock (as bar 10)" },
+  "text": { "always": [".sticker-word", ".note-title"], "lit": [] },
+  "flash": {
+    "pointer": [
+      { "t": 0, "x": 0.5, "y": 0.5 },
+      { "t": 0.5, "x": 1, "y": 0.5 },
+      { "t": 1.5, "x": 0, "y": 0.5 },
+      { "t": 2, "x": 0.5, "y": 0.5 }
+    ]
+  },
+  "beats": [
+    "A ruled notebook page with a margin line lies under one key light; a die-cut sticker sits on it, raised a little, with a white border, a lit edge and a shadow that falls away from the light",
+    "The sticker's face is holographic foil with sunburst grooves from one seeded point, so each ray angle shows its own colour from the grating and the colour turns round a printed star outline",
+    "Moving the pointer tilts the sticker and turns the key toward it: the foil's colour sweeps round the burst, and the lit edge and shadow follow the light",
+    "The sticker's word sits on a white under-print band and the note's title sits on the paper above the ruled lines, so both stay readable",
+    "Nothing moves without the pointer; when the pointer leaves the page the tilt eases back to flat"
+  ]
+}

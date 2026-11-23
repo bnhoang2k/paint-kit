@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Holo sticker</title>
+<!-- A holo sticker on a notebook. Copies bar 10 (foil card): its paint call (paper + foil materials, one casting key,
+     ambient, the pointer tilts the sticker and turns the key), its sunburst grooves and its lift. The content is new:
+     a ruled notebook page with a margin line, and a die-cut sticker with a pale border, a foil face, a printed star
+     outline round the burst's centre and a pale under-print band that carries the sticker's word.
+     Slots: 0 the notebook page (paper at the ground tone), 1 the sticker's pale border and band (paper at tone 0.25),
+     2 the sticker's foil face, 3 the margin line (paper at tone 0.75, the margin accent). Light 0 is the key, light 1
+     the ambient. Every number is in notes.md with its source or "builder". -->
+<style>
+  :root {
+    --ground: oklch(0.9 0.025 85);
+    --ink: oklch(0.3 0.06 260);
+    --sticker: oklch(0.98 0.006 100);
+    --rule: oklch(0.68 0.08 235);
+    --margin: oklch(0.62 0.15 25);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.25 0.015 260);
+      --ink: oklch(0.92 0.01 90);
+      --sticker: oklch(0.37 0.015 260);
+      --rule: oklch(0.62 0.08 235);
+      --margin: oklch(0.66 0.13 25);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .words { --u: 1; position: fixed; margin: 0; display: flex; align-items: center; box-sizing: border-box; }
+  .words p { margin: 0; white-space: nowrap; }
+  .sticker-band { justify-content: center; }
+  .sticker-word { font: 700 20px/1.1 "Trebuchet MS", "Helvetica Neue", Arial, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+  .note-head { justify-content: flex-start; }
+  .note-title { font: italic 400 18px/1.2 Georgia, "Times New Roman", serif; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<div class="words note-head">
+  <p class="note-title" data-paint-ink data-ui-paint-text>Tuesday, chemistry notes</p>
+</div>
+<div class="words sticker-band">
+  <p class="sticker-word" data-paint-ink data-ui-paint-text>Well done</p>
+</div>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage, easeOfTau } from "paint-kit";
+
+  // The sticker, in short-side units (ss) about the page centre, y up (fields.shape's q). notes.md gives each one's why.
+  const STICKER = {
+    centre: [0, 0],
+    half: [0.3, 0.2],     // a landscape die-cut sticker, 0.6 x 0.4 ss
+    corner: 0.07,         // the die-cut's round corners
+    lift: 0.012,          // bar 10's lift: how far the sticker stands off the page
+    bevel: 0.004,         // bar 10: its cut edge rounds over this width
+    border: 0.018,        // the pale die-cut border round the foil
+    band: [0.03, 0.025, 0.075], // pale under-print band: side inset, bottom inset (inside the border), height
+    line: 0.004,          // bar 10: printed line width (the star)
+    star: [0.07, 0.45],   // the printed star outline: outer radius, inner-to-outer ratio
+  };
+  // The notebook: a paper page with a still warp that clears to flat near the sticker, faint ruled lines and a margin.
+  const PAGE = { warp: 0.004, freq: 2.2, clear: 0.03 };
+  const RULE = { pitch: 0.045, top: 0.34, width: 0.0025, ink: 0.3 }; // ruled lines: spacing, top line, width, ink share
+  const MARGIN = { inset: 0.16, width: 0.005 }; // the margin line: from the canvas's left edge, width
+  // The key light (casts), the ambient. The foil: grating options and pull, bar 10's kept values.
+  const KEY = { dir: [-0.6, 0.5, 0.62], level: 0.85, soft: 0.8 };
+  const AMBIENT = 0.15;
+  const FOIL = { spacing: 1.5, orders: 2, roughness: 0.3, tone: 0, pull: 0.3, target: "nearest" };
+  // The pointer (bar 10's job "both"): tilt up to TILT.max degrees with time constant TILT.tau s, and the key turns
+  // toward the pointer with the same lag; BIAS leans it near the sticker's centre.
+  const TILT = { max: 8, tau: 0.1 };
+  const BIAS = 0.12;
+
+  const sticker = fields.shape({
+    writes: ["height", "coverage", "ink", "slot", "direction"],
+    uniforms: {
+      uC: STICKER.centre, uHalf: STICKER.half, uCorner: STICKER.corner, uLift: STICKER.lift, uBevel: STICKER.bevel,
+      uBorder: STICKER.border, uBand: STICKER.band, uLine: STICKER.line, uStar: STICKER.star,
+      uWarp: PAGE.warp, uFreq: PAGE.freq, uClear: PAGE.clear,
+      uRule: [RULE.pitch, RULE.top, RULE.width, RULE.ink], uMargin: [MARGIN.inset, MARGIN.width],
+    },
+    glsl: /* glsl */ `
+uniform vec2 uC, uHalf, uStar, uMargin;
+uniform vec3 uBand; // not-colour: band side inset, bottom inset, height, ss
+uniform vec4 uRule; // not-colour: ruled lines: pitch, top line, width, ink share
+uniform float uCorner, uLift, uBevel, uBorder, uLine, uWarp, uFreq, uClear;
+float boxSd(vec2 p, vec2 b, float r) { vec2 d = abs(p) - b + r; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r; }
+// A five-point star's signed distance (outer radius r, inner ratio rf), point up.
+float starSd(vec2 p, float r, float rf) {
+  const vec2 k1 = vec2(0.809016994375, -0.587785252292);
+  const vec2 k2 = vec2(-k1.x, k1.y);
+  p.x = abs(p.x);
+  p -= 2.0 * max(dot(k1, p), 0.0) * k1;
+  p -= 2.0 * max(dot(k2, p), 0.0) * k2;
+  p.x = abs(p.x);
+  p.y -= r;
+  vec2 ba = rf * vec2(-k1.y, k1.x) - vec2(0.0, 1.0);
+  float h = clamp(dot(p, ba) / dot(ba, ba), 0.0, r);
+  return length(p - ba * h) * sign(p.y * ba.x - p.x * ba.y);
+}
+// The foil face's half size (inside the border), and the band's centre and half size, about the sticker's centre.
+vec2 faceH() { return uHalf - uBorder; }
+vec2 bandH() { return vec2(faceH().x - uBand.x, 0.5 * uBand.z); }
+vec2 bandC() { return vec2(0.0, -faceH().y + uBand.y + 0.5 * uBand.z); }
+// The burst's centre: seeded, in the foil above the band, away from the sides.
+vec2 burstC() {
+  float top = faceH().y;
+  float bot = bandC().y + bandH().y;
+  float mid = 0.5 * (top + bot);
+  return vec2((hash11(uSeed + 3.0) - 0.5) * 0.25, mid + (hash11(uSeed + 7.0) - 0.5) * 0.06);
+}
+float strokeW(float d, float w) {
+  float aa = 1.0 / min(uRes.x, uRes.y);
+  return 1.0 - smoothstep(0.5 * w - aa, 0.5 * w + aa, abs(d));
+}
+vec4 field(vec2 uv, vec2 q) {
+  vec2 p = q - uC;
+  float sd = boxSd(p, uHalf, uCorner);
+  if (sd > 0.0) {
+    // The notebook page: a still warp, flat within uClear of the sticker; faint ruled lines below the top line; a margin.
+    float w = uWarp * (0.5 + 0.5 * fbm(q * uFreq + uSeed * 1.7, 3)) * smoothstep(0.0, uClear, sd);
+    float halfW = 0.5 * uRes.x / min(uRes.x, uRes.y);
+    float mx = -halfW + uMargin.x;
+    if (abs(q.x - mx) < 0.5 * uMargin.y) return vec4(w, 1.0, 0.0, 3.0);
+    float ink = 0.0;
+    if (q.y < uRule.y + 0.5 * uRule.z) {
+      float d = mod(uRule.y - q.y + 0.5 * uRule.x, uRule.x) - 0.5 * uRule.x;
+      ink = uRule.w * strokeW(d, uRule.z);
+    }
+    return vec4(w, 1.0, ink, 0.0);
+  }
+  float rim = smoothstep(-uBevel, 0.0, sd);
+  float h = uLift * (1.0 - rim * rim);
+  // The pale die-cut border.
+  if (boxSd(p, faceH(), max(uCorner - uBorder, 0.0)) > 0.0) return vec4(h, 1.0, 0.0, 1.0);
+  // The pale under-print band.
+  if (boxSd(p - bandC(), bandH(), 0.5 * uBand.z) < 0.0) return vec4(h, 1.0, 0.0, 1.0);
+  // The foil face, under the printed star outline.
+  float ink = strokeW(starSd(p - burstC(), uStar.x, uStar.y), uLine);
+  return vec4(h, 1.0, ink, 2.0);
+}
+// Sunburst grooves (bar 10's): along the ray from the burst's centre; none off the foil face.
+vec2 fieldDir(vec2 uv, vec2 q) {
+  vec2 p = q - uC;
+  if (boxSd(p, faceH(), max(uCorner - uBorder, 0.0)) > 0.0) return vec2(0.0);
+  if (boxSd(p - bandC(), bandH(), 0.5 * uBand.z) < 0.0) return vec2(0.0);
+  vec2 d = p - burstC();
+  float l = length(d);
+  return l > 1e-5 ? d / l : vec2(0.0, 1.0);
+}
+`,
+  });
+
+  // The key's direction for a pointer offset m from the sticker's centre (ss, x right, y up), as bar 10's light job.
+  const restH = Math.hypot(KEY.dir[0], KEY.dir[1]);
+  const keyDir = (m) => {
+    if (!m) return [...KEY.dir];
+    const hx = (KEY.dir[0] / restH) * BIAS + m[0];
+    const hy = (KEY.dir[1] / restH) * BIAS + m[1];
+    const len = Math.hypot(hx, hy) || 1;
+    return [(hx / len) * restH, (hy / len) * restH, KEY.dir[2]];
+  };
+  const lightsOf = (m) => [
+    lights.key({ dir: keyDir(m), level: KEY.level, shadow: { soft: KEY.soft } }),
+    lights.ambient(AMBIENT),
+  ];
+
+  const painter = paint(document.querySelector("canvas"), {
+    seed: 1, // ?seed= overrides it (the engine reads the URL)
+    detail: 0.6,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--sticker", "--rule", "--margin"] }),
+    fields: [sticker, fields.text()],
+    materials: [
+      materials.paper({ tone: 0 }),
+      materials.paper({ tone: 0.25 }),
+      materials.foil({ spacing: FOIL.spacing, orders: FOIL.orders, roughness: FOIL.roughness, tone: FOIL.tone, pull: FOIL.pull, pullTarget: FOIL.target }),
+      materials.paper({ tone: 0.75 }),
+    ],
+    lights: lightsOf(null),
+    pointer: { ease: easeOfTau(TILT.tau) },
+    tilt: { max: TILT.max, drive: "pointer" },
+  });
+  window.painter = painter;
+
+  // Layout: the sticker's word sits on its pale band; the note's title sits above the top ruled line, right of the
+  // margin. The sticker's centre is where the light job measures the pointer from.
+  const head = document.querySelector(".note-head");
+  const band = document.querySelector(".sticker-band");
+  const view = { side: 1, cx: 0, cy: 0 };
+  const WORDS = { ".sticker-word": 20, ".note-title": 18 };
+  const TYPE = [12, 13, 14, 16, 18, 20, 24, 32, 40, 48, 64];
+  const typeStep = (px) => TYPE.filter((s) => s <= px).pop() ?? TYPE[0];
+  function layout() {
+    const side = Math.min(innerWidth, innerHeight);
+    const halfW = 0.5 * innerWidth / side;
+    const toX = (x) => innerWidth / 2 + x * side;
+    const toY = (y) => innerHeight / 2 - y * side;
+    const place = (el, x0, x1, y0, y1) =>
+      Object.assign(el.style, { left: `${toX(x0)}px`, width: `${(x1 - x0) * side}px`, top: `${toY(y1)}px`, height: `${(y1 - y0) * side}px` });
+    const [cx, cy] = STICKER.centre;
+    const face = [STICKER.half[0] - STICKER.border, STICKER.half[1] - STICKER.border];
+    const [bs, bb, bt] = STICKER.band;
+    place(band, cx - face[0] + bs, cx + face[0] - bs, cy - face[1] + bb, cy - face[1] + bb + bt);
+    const mx = -halfW + MARGIN.inset;
+    place(head, mx + 0.03, halfW - 0.03, RULE.top + 0.01, RULE.top + RULE.pitch + 0.01);
+    const u = side / 600;
+    for (const el of [head, band]) el.style.setProperty("--u", String(u));
+    for (const [sel, px] of Object.entries(WORDS)) document.querySelector(sel).style.fontSize = `${typeStep(px * u)}px`;
+    Object.assign(view, { side, cx: toX(cx), cy: toY(cy) });
+  }
+  layout();
+  addEventListener("resize", layout);
+
+  // The light job's own motion (bar 10's): the key eases toward the pointer. Under reduced motion it goes straight
+  // there. Until the pointer moves the page never calls set, so the checks' own light changes stand.
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  const st = { m: null, target: null };
+  let raf = 0;
+  let last = 0;
+  function tick(now) {
+    raf = 0;
+    if (!st.target) return;
+    const dt = last ? Math.min((now - last) / 1000, 1 / 30) : 1 / 60;
+    last = now;
+    const m = st.m ?? [0, 0];
+    const k = reduced.matches ? 1 : 1 - Math.exp(-dt / TILT.tau);
+    const next = [m[0] + (st.target[0] - m[0]) * k, m[1] + (st.target[1] - m[1]) * k];
+    const busy = Math.hypot(st.target[0] - next[0], st.target[1] - next[1]) > 1e-4;
+    st.m = busy ? next : [...st.target];
+    painter.set({ lights: lightsOf(st.m) });
+    if (busy) raf = requestAnimationFrame(tick);
+    else last = 0;
+  }
+  addEventListener("pointermove", (e) => {
+    st.target = [(e.clientX - view.cx) / view.side, (view.cy - e.clientY) / view.side];
+    if (!raf) raf = requestAnimationFrame(tick);
+  });
+</script>
+</body>
+</html>

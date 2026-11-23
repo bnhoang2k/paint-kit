@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit red flash 5 Hz (planted fault)</title>
+<!-- PLANTED FAULT (flash-red-5hz: a full-viewport saturated red / grey swap at 5 Hz). The two states have nearly the
+     same relative luminance (red 0.2126, grey 0.2159), so only WCAG 2.3.1's red-flash rule can catch it: red is
+     R/(R+G+B) = 1 and its CIE 1976 u'v' distance from grey is about 0.26, over 0.2. 5 red flashes in any 1 s, over
+     the limit of 3. A minimal `window.__paint` hook draws the frame for `setTime(t)`, as in test/pages/flash-2hz.html. -->
+<style>
+  :root { --red: rgb(255 0 0); --grey: rgb(128 128 128); }
+  html, body { margin: 0; height: 100%; }
+</style>
+</head>
+<body>
+<script>
+  const HZ = 5;
+  const draw = (t) => {
+    const red = Math.floor(t * HZ * 2 + 1e-9) % 2 === 0;
+    document.body.style.background = red ? "var(--red)" : "var(--grey)";
+  };
+  draw(Number(new URLSearchParams(location.search).get("t") ?? 0));
+  window.__paint = { ready: true, setTime: draw, stats: () => ({ frames: 0 }) };
+</script>
+</body>
+</html>

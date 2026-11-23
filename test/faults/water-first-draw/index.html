@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit water</title>
+<!-- PLANTED FAULT (water-first-draw: engine fault 'picture-on-active-unit'). A copy of test/pages/water.html with
+     exactly one change: the engine fault uploads the material's `under` picture on the active texture unit (the
+     sheet's) instead of its own, so the first shade draw after the material is made reads the picture as the sheet
+     (the card unrefracted and grey) and every later draw is right. Under reduced motion the engine draws once and
+     rests on that wrong frame. The still check must fail on it (test/pages/water.test.ts, "a wrong first draw fails
+     still"): the rested frame is not a redraw at the settle time. -->
+<!-- The water test page: a pool over the whole page (fields.water, material slot 0 materials.water) with a card
+     lying on its floor. The floor and the card are a tone map drawn from page shapes into a 2D canvas (`under`):
+     each pixel's red channel is a ramp position, 0 the ground token, 1 the ink token, the accents between, so the
+     picture has no colour of its own and follows the tokens in either scheme. The tiled floor sits near the accent
+     (0.5) and the card near the ground, with three text bars and a disc in ink tones. Lights: a key from the upper
+     left filtered by the water (light 0, lights.throughWater, which draws the caustic lines on the floor) and
+     ambient (light 1). The pool's geometry (floor depth, index of refraction) is the field's alone: the material
+     and the light read it. test/pages/water.test.ts reads WATER and FLOOR; change both together.
+     Test switches (water.test.ts): `?rise=<h>` lifts the card h short-side units off the floor through a rise map
+     (the card's footprint in red), so only the card comes up; `?moving=floor,shift,rise` (any of the three) makes
+     those values functions of t, read per frame through uniforms, as bar 05 will. Without either, the plain floor.
+     `window.painter` is the painter. -->
+<style>
+  :root {
+    --ground: oklch(0.95 0.02 210);
+    --ink: oklch(0.3 0.06 240);
+    --accent: oklch(0.68 0.1 215);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.26 0.04 240);
+      --ink: oklch(0.92 0.03 200);
+      --accent: oklch(0.5 0.09 220);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+<script>globalThis.__PAINT_TEST_FAULT = 'picture-on-active-unit';</script>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage } from "paint-kit";
+
+  // The pool: wave crests per short side, rate, wave height (0..1); the floor's depth under the surface in
+  // short-side units, on the field, which the material (the picture's refraction) and the light (the caustic focus)
+  // both read.
+  const WATER = { waves: 6, speed: 1, depth: 0.6 };
+  const FLOOR = 1.0;
+
+  // The floor and the card as a tone map (ramp positions in red), from shapes. Soft edges one px wide.
+  function underPicture(w, h) {
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const g = c.getContext("2d");
+    const img = g.createImageData(w, h);
+    const lift = g.createImageData(w, h);
+    const side = Math.min(w, h);
+    const tile = side / 7;
+    const edge = (d) => Math.min(1, Math.max(0, 0.5 - d));
+    const card = { cx: w * 0.5, cy: h * 0.5, hw: side * 0.42, hh: side * 0.27, r: side * 0.04 };
+    const roundBox = (x, y, b) => {
+      const qx = Math.abs(x - b.cx) - (b.hw - b.r);
+      const qy = Math.abs(y - b.cy) - (b.hh - b.r);
+      return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - b.r;
+    };
+    const bars = [0, 1, 2].map((k) => ({ cx: card.cx - side * 0.08 + (k === 2 ? -side * 0.06 : 0), cy: card.cy - side * 0.1 + k * side * 0.08, hw: k === 2 ? side * 0.16 : side * 0.22, hh: side * 0.016, r: side * 0.016 }));
+    const disc = { x: card.cx + side * 0.27, y: card.cy - side * 0.02, r: side * 0.08 };
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        // Floor: the accent, with tile joints a little darker.
+        const jx = Math.abs(((x + tile / 2) % tile) - tile / 2);
+        const jy = Math.abs(((y + tile / 2) % tile) - tile / 2);
+        let tone = 0.5 + 0.12 * edge(Math.min(jx, jy) - 1.5);
+        // The card, near the ground, and its print.
+        tone += (0.05 - tone) * edge(roundBox(x, y, card));
+        for (const b of bars) tone += (0.82 - tone) * edge(roundBox(x, y, b));
+        tone += (0.62 - tone) * edge(Math.hypot(x - disc.x, y - disc.y) - disc.r);
+        const o = (y * w + x) * 4;
+        img.data[o] = img.data[o + 1] = img.data[o + 2] = Math.round(tone * 255);
+        img.data[o + 3] = 255;
+        // The rise map: the card's footprint in red, 1 on the card.
+        lift.data[o] = Math.round(edge(roundBox(x, y, card)) * 255);
+        lift.data[o + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    const r = document.createElement("canvas");
+    r.width = w;
+    r.height = h;
+    r.getContext("2d").putImageData(lift, 0, 0);
+    return { tone: c, rise: r };
+  }
+
+  const canvas = document.querySelector("canvas");
+  const pictures = underPicture(Math.max(1, Math.round(innerWidth)), Math.max(1, Math.round(innerHeight)));
+  const q = new URLSearchParams(location.search);
+  const moving = new Set((q.get("moving") ?? "").split(",").filter(Boolean));
+  const riseAt = q.has("rise") ? Number(q.get("rise")) : moving.has("rise") ? 0 : null;
+  const pool = { ...WATER, floor: FLOOR };
+  if (moving.has("floor")) pool.floor = (t) => FLOOR + 0.08 * Math.sin(1.3 * t);
+  if (moving.has("shift")) pool.shift = (t) => [0.02 * Math.sin(0.7 * t), 0.015 * Math.cos(0.9 * t)];
+  if (riseAt !== null) pool.rise = { map: pictures.rise, height: moving.has("rise") ? (t) => 0.25 + 0.15 * Math.sin(1.1 * t) : riseAt };
+  window.painter = paint(canvas, {
+    seed: 1,
+    detail: 0.5,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    fields: [fields.water(pool)],
+    materials: [materials.water({ under: pictures.tone })],
+    lights: [lights.throughWater(lights.key({ dir: [-0.35, 0.45, 0.82], level: 0.85 })), lights.ambient(0.3)],
+  });
+</script>
+</body>
+</html>

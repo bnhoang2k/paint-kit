@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paint-kit tilt</title>
+<!-- The tilt test page (Phase 2 Task 11): one card, 480 x 300 CSS px in the middle of the page, so the pointer can
+     leave it inside the viewport. The card is one sheen dome under a fixed key light (no follow), so only the tilt
+     can move its highlight. The pointer tips the card by up to 20 degrees (builder: a test value, about a held card's
+     turn), eased with bar 01's lamp lag (tau 0.1 s). `?matte`: the same card flat and matte (tone 0.3), so only the
+     tilt's turn of the normal can change its diffuse light (Task 16). tilt.test.ts reads these numbers; change both
+     together. -->
+<style>
+  :root {
+    --ground: oklch(0.93 0.02 85);
+    --ink: oklch(0.28 0.03 260);
+    --accent: oklch(0.66 0.15 25);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.32 0.02 260);
+      --ink: oklch(0.93 0.02 85);
+      --accent: oklch(0.72 0.14 30);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink); }
+  canvas { position: absolute; left: calc(50% - 240px); top: calc(50% - 150px); width: 480px; height: 300px; display: block; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<script type="module">
+  import { paint, fields, materials, lights, fromPage, easeOfTau } from "paint-kit";
+
+  const query = new URLSearchParams(location.search);
+  const seed = Number(query.get("seed") ?? 1) || 1;
+  const matte = query.has("matte");
+  paint(document.querySelector("canvas"), {
+    seed,
+    palette: fromPage({ ground: "--ground", ink: "--ink", accents: ["--accent"] }),
+    // A dome: height 0.06 (short-side units) at the centre down to 0 at radius 0.45, so its normals turn up to about
+    // 15 degrees and the highlight has room to move across it.
+    fields: [
+      fields.shape({
+        writes: ["height", "coverage"],
+        glsl: `vec4 field(vec2 uv, vec2 q) { float r2 = dot(q, q) / (0.45 * 0.45); return vec4(${matte ? "0.0" : "0.06"} * max(1.0 - r2, 0.0), 1.0, 0.0, 0.0); }`,
+      }),
+    ],
+    materials: [matte ? materials.matte({ tone: 0.3 }) : materials.sheen({ roughness: 0.3, anisotropy: 0, tone: 0.3 })],
+    lights: [lights.key({ dir: [0.15, 0.2, 1], level: 0.9 }), lights.ambient(0.2)],
+    pointer: { ease: easeOfTau(0.1) },
+    tilt: { max: 20, drive: "pointer" },
+  });
+</script>
+</body>
+</html>

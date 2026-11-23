@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>palette tokens</title>
+<!-- Test input: every token form getComputedStyle can hand back. Literals here are the input under test. -->
+<style>
+  :root {
+    --a: #3366cc;
+    --b: rgb(51 102 204);
+    --c: oklch(0.52 0.15 262);
+    --d: color(srgb 0.2 0.4 0.8);
+    --e: var(--a);
+    --f: royalblue;
+    /* Out of sRGB gamut: the browser clips each channel. */
+    --g: oklch(0.7 0.25 30);
+    --h: oklch(0.65 0.3 145);
+    /* Not opaque: fromPage must refuse these. */
+    --clear: transparent;
+    --half: rgb(0 0 0 / 0.5);
+    /* Watch tokens: --w1 follows data-theme, --w2 follows the colour scheme. */
+    --w1: #eeeeee;
+    --w2: #222222;
+  }
+  :root[data-theme="dark"] { --w1: #111111; }
+  @media (prefers-color-scheme: dark) { :root { --w2: #dddddd; } }
+  #scope { --s: #445566; }
+  #scope.alt { --s: #665544; }
+  html, body { margin: 0; background: white; }
+  .row { display: flex; gap: 8px; padding: 8px; }
+  .sw { width: 40px; height: 40px; }
+</style>
+<script type="importmap">{"imports":{"paint-kit":"/dist/src/engine/index.js"}}</script>
+</head>
+<body>
+<div class="row">
+  <div class="sw" data-token="--a" style="background: var(--a)"></div>
+  <div class="sw" data-token="--b" style="background: var(--b)"></div>
+  <div class="sw" data-token="--c" style="background: var(--c)"></div>
+  <div class="sw" data-token="--d" style="background: var(--d)"></div>
+  <div class="sw" data-token="--e" style="background: var(--e)"></div>
+  <div class="sw" data-token="--f" style="background: var(--f)"></div>
+  <div class="sw" data-token="--g" style="background: var(--g)"></div>
+  <div class="sw" data-token="--h" style="background: var(--h)"></div>
+</div>
+<div id="scope"></div>
+<script type="module">
+  import { fromPage, GLSL_OKLAB } from "paint-kit";
+
+  const tokens = {};
+  for (const el of document.querySelectorAll(".sw")) {
+    const name = el.dataset.token;
+    const r = el.getBoundingClientRect();
+    tokens[name] = {
+      linear: fromPage({ ground: name, ink: name }).read().ground,
+      x: r.left + r.width / 2,
+      y: r.top + r.height / 2,
+    };
+  }
+
+  window.__alphaErrors = ["--clear", "--half"].map((name) => {
+    try {
+      fromPage({ ground: "--a", ink: name }).read();
+      return "no error";
+    } catch (e) {
+      return e.message;
+    }
+  });
+
+  // GLSL_OKLAB must compile as part of a WebGL2 fragment shader.
+  let glsl = "no webgl2";
+  const gl = document.createElement("canvas").getContext("webgl2");
+  if (gl) {
+    const sh = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(sh, `#version 300 es
+precision highp float;
+${GLSL_OKLAB}
+out vec4 o;
+void main() { o = vec4(ramp(0.5) + mixOklab(uGround, uInk, 0.5), 1.0); }`);
+    gl.compileShader(sh);
+    glsl = gl.getShaderParameter(sh, gl.COMPILE_STATUS) ? "ok" : gl.getShaderInfoLog(sh);
+  }
+
+  window.__changes = 0;
+  window.__unwatch = fromPage({ ground: "--w1", ink: "--w2" }).watch(() => window.__changes++);
+  window.__scopeChanges = 0;
+  fromPage({ ground: "--s", ink: "--s" }, document.getElementById("scope")).watch(() => window.__scopeChanges++);
+
+  window.__tokens = tokens;
+  window.__glsl = glsl;
+</script>
+</body>
+</html>

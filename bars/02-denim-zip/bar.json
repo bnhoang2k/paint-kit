@@ -1,0 +1,24 @@
+{
+  "id": "02-denim-zip",
+  "reference": {
+    "shelfKey": "60fps.design/shots/flashback-zip-unlock-splash-get-started-interaction",
+    "title": "Flashback zip unlock"
+  },
+  "palette": { "ground": "--ground", "ink": "--ink", "accents": ["--accent"] },
+  "detail": 0.6,
+  "view": { "width": 393, "height": 852 },
+  "seeds": [1, 2, 3],
+  "laws": ["relief", "highlight"],
+  "alive": { "rests": "rests until the pull is dragged; motion-kit's bar 13 gate covers the drag" },
+  "text": { "always": ["#status .time"], "lit": [] },
+  "beats": [
+    "Closed denim fills the phone screen, a zipper down the middle and the pull at the top",
+    "Dragging the pull opens a V-gap that ends at the pull and follows the finger 1:1; the cloth halves slide outward row by row",
+    "A short pull (slider top under 426 px) springs back shut in about 0.2 s and the pull tab swings",
+    "A full pull commits: the slider runs on, the halves leave the screen and the header behind builds"
+  ],
+  "motion": {
+    "from": "motion-kit/bars/13-drag-past-a-threshold",
+    "cited": "MOTION block and the __seek clock copied byte for byte from $PROJECTS_ROOT/motion-kit/bars/13-drag-past-a-threshold/index.html; numbers and rows in that bar's notes.md"
+  }
+}
