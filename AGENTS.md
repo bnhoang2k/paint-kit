@@ -62,7 +62,11 @@ Rules every page follows:
 - Text stays in the HTML. Text the light must fall on carries `data-paint-ink`; the engine draws
   it into the sheet and hides the HTML copy while WebGL runs.
 - The page loads the engine as `paint-kit` through an import map to `/dist/src/engine/index.js`.
-  No bundler.
+  No bundler. Inside the kit that path is the kit's own build. In another project, run
+  `node <kit>/dist/src/cli/paint-kit.js init <folder>` once, where `<folder>` is the folder the
+  site serves at `/` (a static site's root, Next.js's `public/`). It copies the built engine to
+  `<folder>/dist/src/engine`, writes the kit version to `<folder>/dist/paint-kit.json`, and prints
+  these steps. Put pages under that folder. Run `init` again after a kit update to refresh the copy.
 - Take a `seed` (from `?seed=`) and feed it to the paint: every random number in a paint comes
   from it, and the gate runs each page at every seed in `bar.json`. No check requires that
   different seeds look different. Two pages that copy a bar must not look the same because of
@@ -100,7 +104,9 @@ pnpm build
 node dist/src/cli/paint-kit.js gate bars/<name>
 ```
 
-`gate` takes a bar folder or a page `.html` file, inside `bars/` or not. A folder or a page
+`gate` takes a bar folder or a page `.html` file, inside `bars/` or not. A page outside the kit
+must sit under a folder that `init` set up: the gate serves the nearest folder above the page
+that holds `dist/src/engine/index.js`, and names `init` when there is none. A folder or a page
 with a `bar.json` beside it runs at every seed in the file; a page with none runs once, at
 seed 1.
 

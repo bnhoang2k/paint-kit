@@ -121,9 +121,14 @@ function barFiles(dir: string): string[] {
   return out;
 }
 
+/** A file's name in a finding: relative to the kit for a file inside it, the full path for a page outside it. */
+const rel = (f: string): string => {
+  const r = path.relative(REPO_ROOT, f);
+  return r.startsWith("..") || path.isAbsolute(r) ? f : r;
+};
+
 /** Static half over the target's html (a path under the repo root) and, with a bar, its local .js, .glsl and .css files. */
 export function staticFindings(htmlFile: string, hasBar: boolean): string[] {
-  const rel = (f: string) => path.relative(REPO_ROOT, f);
   const found = scanHtml(readFileSync(htmlFile, "utf8"), rel(htmlFile));
   if (hasBar) {
     for (const f of barFiles(path.dirname(htmlFile))) found.push(...scanText(readFileSync(f, "utf8"), rel(f), 1, f.endsWith(".css") ? "css" : "js"));
@@ -220,7 +225,6 @@ export function structureFindings(raw: string, where: string, firstLine = 1): { 
 
 /** S1 and S2 over the target's html scripts and, with a bar, its local .js and .glsl files. */
 export function structureOf(htmlFile: string, hasBar: boolean): { reads: string[]; lights: string[] } {
-  const rel = (f: string) => path.relative(REPO_ROOT, f);
   const parts = inlineBlocks(readFileSync(htmlFile, "utf8")).filter((b) => b.kind === "js").map((b) => structureFindings(b.text, rel(htmlFile), b.line));
   if (hasBar) for (const f of barFiles(path.dirname(htmlFile))) if (!f.endsWith(".css")) parts.push(structureFindings(readFileSync(f, "utf8"), rel(f)));
   return { reads: parts.flatMap((p) => p.reads), lights: parts.flatMap((p) => p.lights) };
@@ -265,7 +269,8 @@ export const check: Check = async (target, opts) => {
   }
 
   // S1, S2 and the colour literals: static.
-  const file = path.join(REPO_ROOT, decodeURIComponent(new URL(target.url).pathname));
+  // The page's own file: a page outside the kit is served from its init folder, not the repo.
+  const file = target.file ?? path.join(REPO_ROOT, decodeURIComponent(new URL(target.url).pathname));
   const hits = existsSync(file) ? staticFindings(file, bar !== null) : [];
   const shape = existsSync(file) ? structureOf(file, bar !== null) : { reads: [], lights: [] };
   measured.staticHits = hits.length;

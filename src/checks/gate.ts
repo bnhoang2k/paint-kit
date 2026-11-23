@@ -37,7 +37,7 @@ export class UsageError extends Error {}
 export type GateOpts = CheckOpts & {
   /** Treat the target as a control page. Unset: a page under `controls/` is one. */
   control?: boolean;
-  /** An already-running server for the repo root. Unset: the gate serves the root itself. */
+  /** An already-running server for the target's served root (`servedRootFor`). Unset: the gate serves it itself. */
   baseUrl?: string;
   /**
    * Run a bar at only these of its bar.json seeds (a test that runs one seed per test, to stay under the page
@@ -48,14 +48,44 @@ export type GateOpts = CheckOpts & {
 
 export type GateResult = { verdict: string; lines: string[]; results: CheckResult[] };
 
-export function resolveTarget(arg: string, opts: GateOpts, base: string): Target {
+/** The file a project's import map loads the engine from, under the folder that is served at `/`. */
+export const ENGINE_ENTRY = path.join("dist", "src", "engine", "index.js");
+
+/**
+ * The folder the gate serves for a page: the kit repo for a page inside it, else the nearest folder above the page
+ * that holds `dist/src/engine/index.js` (the folder `paint-kit init` set up). Without one the page cannot load the
+ * engine, so it is a usage error that names `init`.
+ */
+export function servedRootOf(html: string): string {
+  const inKit = path.relative(REPO_ROOT, html);
+  if (!inKit.startsWith("..") && !path.isAbsolute(inKit)) return REPO_ROOT;
+  for (let d = path.dirname(html); ; d = path.dirname(d)) {
+    if (existsSync(path.join(d, ENGINE_ENTRY))) return d;
+    if (path.dirname(d) === d) break;
+  }
+  throw new UsageError(
+    `gate: ${html} is outside the kit and no folder above it holds ${ENGINE_ENTRY.split(path.sep).join("/")}; run \`paint-kit init <folder>\` on the folder your site serves at /`,
+  );
+}
+
+/** The page's html for a target argument (a folder means its index.html). */
+function htmlOf(arg: string): string {
   const abs = path.resolve(arg);
   if (!existsSync(abs)) throw new UsageError(`gate: ${arg} does not exist`);
-  const isDir = statSync(abs).isDirectory();
-  const html = isDir ? path.join(abs, "index.html") : abs;
+  const html = statSync(abs).isDirectory() ? path.join(abs, "index.html") : abs;
   if (!existsSync(html)) throw new UsageError(`gate: ${path.relative(process.cwd(), html) || html} does not exist`);
-  const rel = path.relative(REPO_ROOT, html);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) throw new UsageError(`gate: ${arg} is outside the repo (${REPO_ROOT}), which the gate serves`);
+  return html;
+}
+
+/** The folder to serve for a target argument: see `servedRootOf`. */
+export const servedRootFor = (arg: string): string => servedRootOf(htmlOf(arg));
+
+/** `base` serves `servedRootFor(arg)`: the kit repo for a page inside it, the init folder for one outside. */
+export function resolveTarget(arg: string, opts: GateOpts, base: string): Target {
+  const abs = path.resolve(arg);
+  const html = htmlOf(arg);
+  const isDir = html !== abs;
+  const rel = path.relative(servedRootOf(html), html);
   const relPosix = rel.split(path.sep).join("/");
   // A folder, or an html file in a folder with a bar.json beside it, is a bar.
   const barDir = isDir ? abs : path.dirname(abs);
@@ -66,7 +96,9 @@ export function resolveTarget(arg: string, opts: GateOpts, base: string): Target
     if (missing.length > 0) throw new UsageError(`gate: seed ${missing.join(", ")} is not in ${arg}'s bar.json seeds`);
     bar.seeds = bar.seeds.filter((s) => opts.seeds!.includes(s));
   }
-  return { url: `${base}/${relPosix}${bar?.query ? `?${bar.query}` : ""}`, bar, control: opts.control ?? relPosix.startsWith("controls/") };
+  const inKit = path.relative(REPO_ROOT, html);
+  const control = opts.control ?? (!inKit.startsWith("..") && inKit.split(path.sep)[0] === "controls");
+  return { url: `${base}/${relPosix}${bar?.query ? `?${bar.query}` : ""}`, bar, control, file: html };
 }
 
 const word = { pass: "pass", fail: "FAIL", skip: "skip", partial: "PARTIAL" } as const;
@@ -147,7 +179,7 @@ export async function runAll(t: Target, opts: CheckOpts, checks: CheckEntry[] = 
  * `partial`, never a pass. `checks` is the registry unless a test passes fakes.
  */
 export async function gate(target: string, opts: GateOpts = {}, checks: CheckEntry[] = CHECKS): Promise<GateResult> {
-  const server = opts.baseUrl === undefined ? await serveRoot(REPO_ROOT) : undefined;
+  const server = opts.baseUrl === undefined ? await serveRoot(servedRootFor(target)) : undefined;
   try {
     const t = resolveTarget(target, opts, opts.baseUrl ?? server!.url);
     const results = await runAll(t, opts, checks);

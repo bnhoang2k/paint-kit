@@ -5,13 +5,16 @@ import { PLAYWRIGHT_MISSING, closeBrowsers, playwrightOrNull } from "../checks/h
 import { UsageError, gate } from "../checks/gate.ts";
 import { REPO_ROOT } from "../checks/root.ts";
 import { makeSheet } from "../checks/sheet.ts";
+import { init, nextSteps } from "./init.ts";
 
 const USAGE = `paint-kit: paint web surfaces in WebGL2.
 
 usage: paint-kit <command>
 
 Commands:
-  gate <bar-folder | page.html>   run every check on one bar or page
+  init <folder>                   copy the built engine into <folder>/dist/src/engine (the folder your site
+                                  serves at /) and print the next steps
+  gate <bar-folder | page.html>   run every check on one bar or page (outside the kit: under an init folder)
   gate --all                      run every bars/* and controls/*
   sheet <bar-folder | page.html> --out <png>
                                   one image: seeds 1-3 x light/dark x detail 0, 0.5, 1 x two key lights
@@ -26,6 +29,18 @@ function usage(msg?: string): never {
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
+
+if (cmd === "init") {
+  if (rest.length !== 1) usage("init takes one folder: the one your site serves at /");
+  try {
+    console.log(nextSteps(init(rest[0]!)));
+  } catch (e) {
+    if (e instanceof UsageError) usage(e.message);
+    console.error(`paint-kit: ${(e as Error).message}`);
+    process.exit(2);
+  }
+  process.exit(0);
+}
 
 if (cmd === "gate") {
   if (rest.length !== 1) usage("gate takes one target or --all");

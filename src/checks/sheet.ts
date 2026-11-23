@@ -2,10 +2,9 @@
 // positions. Each cell is labelled in the image. Cells are screenshots; a small 2D canvas in a blank page composes them.
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { resolveTarget } from "./gate.ts";
+import { resolveTarget, servedRootFor } from "./gate.ts";
 import { hasHook, scaledView, viewOf } from "./frames.ts";
 import { openPage } from "./harness.ts";
-import { REPO_ROOT } from "./root.ts";
 import { serveRoot } from "./serve.ts";
 
 export const SHEET_SEEDS = [1, 2, 3] as const;
@@ -27,7 +26,7 @@ export type SheetOpts = { baseUrl?: string };
 
 /** Writes the sheet PNG to `out` and returns how many cells it holds. */
 export async function makeSheet(targetArg: string, out: string, opts: SheetOpts = {}): Promise<{ cells: number; width: number; height: number }> {
-  const server = opts.baseUrl === undefined ? await serveRoot(REPO_ROOT) : undefined;
+  const server = opts.baseUrl === undefined ? await serveRoot(servedRootFor(targetArg)) : undefined;
   try {
     const target = resolveTarget(targetArg, { control: false }, opts.baseUrl ?? server!.url);
     const CELL = { ...cellFor(viewOf(target)), label: LABEL_H };

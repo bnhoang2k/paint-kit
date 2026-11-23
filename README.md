@@ -73,9 +73,19 @@ pnpm exec playwright install chromium
 pnpm build
 ```
 
+Then give your own project the engine. Name the folder your site serves at `/` (a static
+site's root, or `public/` in Next.js):
+
+```bash
+node dist/src/cli/paint-kit.js init ../my-site/public
+```
+
+`init` copies the built engine into that folder's `dist/src/engine`, where every page loads it
+from, and prints the next steps. Run it again after you update the kit.
+
 Then ask your coding agent for a surface and point it at [AGENTS.md](AGENTS.md). It picks the
-nearest example, copies it, changes the words and colours, and runs the gate until it passes.
-Every colour comes from your page's own CSS, so the result matches your site.
+nearest example, copies it into your project, changes the words and colours, and runs the gate
+until it passes. Every colour comes from your page's own CSS, so the result matches your site.
 
 ## Check a page yourself
 
@@ -84,7 +94,7 @@ node dist/src/cli/paint-kit.js gate bars/01-lamp-on-paper
 node dist/src/cli/paint-kit.js sheet bars/01-lamp-on-paper --out sheet.png
 ```
 
-The gate prints `passed`, `partial` or `failed: n`, and a line for each check. The sheet draws the
+Both take a page in your project too, such as `../my-site/public/lamp`. The gate prints `passed`, `partial` or `failed: n`, and a line for each check. The sheet draws the
 page side by side at three seeds, in light and dark, at three levels of detail, and with the light
 in two places, so you can see at a glance whether the light is real or painted on.
 

@@ -5,8 +5,11 @@ export type CheckStatus = "pass" | "fail" | "skip" | "partial";
 /** `line` is the one line the gate prints (it starts with the check's name); `measured` holds the numbers behind it. */
 export type CheckResult = { name: string; status: CheckStatus; line: string; measured: Record<string, number> };
 
-/** `bar` is null for a bare html page (checks use defaults). `control` marks a control page: no `__paint` hook. */
-export type Target = { url: string; bar: BarConfig | null; control: boolean };
+/**
+ * `bar` is null for a bare html page (checks use defaults). `control` marks a control page: no `__paint` hook.
+ * `file` is the page's html on disk (set by `resolveTarget`); unset, a check maps the url's path against the kit repo.
+ */
+export type Target = { url: string; bar: BarConfig | null; control: boolean; file?: string };
 
 export type CheckOpts = {
   readyTimeout?: number;
