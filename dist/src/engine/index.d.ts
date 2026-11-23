@@ -1,0 +1,82 @@
+import { burn } from "./fields/burn.ts";
+import { halftone } from "./fields/halftone.ts";
+import { reactionDiffusion } from "./fields/reaction-diffusion.ts";
+import { shape, sheet } from "./fields/shape.ts";
+import { text } from "./fields/text.ts";
+import { twill } from "./fields/twill.ts";
+import { water } from "./fields/water.ts";
+import { ambient, key } from "./lights/basic.ts";
+import { ember } from "./lights/ember.ts";
+import { glow } from "./lights/glow.ts";
+import { lamp } from "./lights/lamp.ts";
+import { throughWater } from "./lights/through-water.ts";
+import { denim } from "./materials/denim.ts";
+import { film } from "./materials/film.ts";
+import { foil } from "./materials/foil.ts";
+import { glass } from "./materials/glass.ts";
+import { matte } from "./materials/matte.ts";
+import { paper } from "./materials/paper.ts";
+import { sheen } from "./materials/sheen.ts";
+import { water as waterMaterial } from "./materials/water.ts";
+export * from "./palette.ts";
+/** The twill weave as a GLSL chunk for a page's own shape field; see ./glsl/twill.ts. `fields.twill` builds from it. */
+export { GLSL_TWILL, TWILL_RATIO } from "./glsl/twill.ts";
+/** The water surface and its optics as GLSL chunks; see ./glsl/water.ts. `fields.water` builds from them. */
+export { GLSL_WATER, GLSL_WATER_OPTICS } from "./glsl/water.ts";
+/** Light that physics colours (a wavelength, a temperature) and its pull toward the page's ramp; see ./spectrum.ts. */
+export { CIE_1931_2DEG, blackbodyXyz, pullToRamp, spectrumLut, wavelengthToLinear, type CmfRow, type PullTarget } from "./spectrum.ts";
+/** The spectrum and the pull as a GLSL chunk (`pk_spectrum`, `pk_pull`); see ./glsl/spectrum.ts. */
+export { GLSL_SPECTRUM } from "./glsl/spectrum.ts";
+export { paint } from "./paint.ts";
+export type { PaintHook } from "./hook.ts";
+export { easeOfTau, pathAt, type PointerOptions, type PointerStop } from "./pointer.ts";
+export type { Motion } from "./loop.ts";
+export type { Sheet } from "./sheet.ts";
+export type { Target } from "./gl.ts";
+export type * from "./types.ts";
+export declare const fields: {
+    shape: typeof shape;
+    sheet: typeof sheet;
+    text: typeof text;
+    twill: typeof twill;
+    halftone: typeof halftone;
+    reactionDiffusion: typeof reactionDiffusion;
+    water: typeof water;
+    burn: typeof burn;
+};
+export declare const materials: {
+    matte: typeof matte;
+    paper: typeof paper;
+    denim: typeof denim;
+    sheen: typeof sheen;
+    glass: typeof glass;
+    water: typeof waterMaterial;
+    foil: typeof foil;
+    film: typeof film;
+};
+export declare const lights: {
+    ambient: typeof ambient;
+    key: typeof key;
+    lamp: typeof lamp;
+    glow: typeof glow;
+    throughWater: typeof throughWater;
+    ember: typeof ember;
+};
+export { lampRingPoint, lampSheetPoint, pageToSheet, sheetToPage, type LampOptions } from "./lights/lamp.ts";
+export type { GlowOptions } from "./lights/glow.ts";
+export type { EmberOptions } from "./lights/ember.ts";
+export type { BurnField, BurnOptions } from "./fields/burn.ts";
+export type { TextOptions } from "./fields/text.ts";
+export type { PaperOptions } from "./materials/paper.ts";
+export type { DenimOptions } from "./materials/denim.ts";
+export type { SheenOptions } from "./materials/sheen.ts";
+export type { FilmOptions } from "./materials/film.ts";
+export type { FoilOptions } from "./materials/foil.ts";
+export type { GlassOptions } from "./materials/glass.ts";
+export type { ToneOptions } from "./materials/tone.ts";
+export type { TwillOptions } from "./fields/twill.ts";
+export type { HalftoneOptions } from "./fields/halftone.ts";
+export type { ReactionDiffusionOptions } from "./fields/reaction-diffusion.ts";
+export type { WaterOptions } from "./fields/water.ts";
+export type { WaterMaterialOptions } from "./materials/water.ts";
+export type { ThroughWaterOptions } from "./lights/through-water.ts";
